@@ -1,0 +1,79 @@
+# ==========================================
+# 1. Sensitive Data & Environment Variables
+# ==========================================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.pem
+*.key
+*.crt
+*.p12
+
+# ==========================================
+# 2. Node.js Dependencies (Heavy & Generated)
+# ==========================================
+node_modules/
+frontend/node_modules/
+backend/node_modules/
+
+# ==========================================
+# 3. Build Outputs & Dist Folders
+# ==========================================
+dist/
+build/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ==========================================
+# 4. OS & Editor Artifacts
+# ==========================================
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.sublime-*
+*.sublime-project
+*.sublime-workspace
+
+# ==========================================
+# 5. Llama.cpp & Large Model Files (CRITICAL)
+# ==========================================
+# Never commit .gguf files (they are GBs in size)
+*.gguf
+*.bin
+*.pt
+*.safetensors
+
+# Llama server temporary files
+llama-server/
+llama.cpp/
+models/
+model_cache/
+
+# ==========================================
+# 6. Testing & Coverage
+# ==========================================
+coverage/
+.nyc_output/
+
+# ==========================================
+# 7. Frontend Specific (Vite/React)
+# ==========================================
+frontend/dist/
+frontend/.vite/
+frontend/public/build/
+
+# ==========================================
+# 8. Docker (Optional, if you add it later)
+# ==========================================
+*.dockerignore
+Dockerfile*

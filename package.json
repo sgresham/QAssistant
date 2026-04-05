@@ -1,0 +1,19 @@
+{
+  "name": "qassistant",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "backend": "cd backend && node src/index.js",
+    "frontend": "cd frontend && npm run dev",
+    "start": "./start.sh",
+    "start:windows": "powershell -ExecutionPolicy Bypass -File start.ps1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "wait-on": "^9.0.4"
+  }
+}
