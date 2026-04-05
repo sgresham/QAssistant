@@ -22,7 +22,7 @@ if (-not (Test-Path "frontend\node_modules")) {
 
 # Start concurrently
 npx concurrently `
-  "npm run backend" `
+  "npm run backend:dev" `
   "npm run frontend" `
   --kill-others `
   --prefix-colors "bgBlue.bold,bgGreen.bold"

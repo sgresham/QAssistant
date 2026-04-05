@@ -5,9 +5,10 @@
   "main": "index.js",
   "scripts": {
     "backend": "cd backend && node src/index.js",
+    "backend:dev": "cd backend && npm run dev", 
     "frontend": "cd frontend && npm run dev",
-    "start": "./start.sh",
-    "start:windows": "powershell -ExecutionPolicy Bypass -File start.ps1"
+    "start": "./start.ps1",
+    "start:dev": "./start.ps1" 
   },
   "keywords": [],
   "author": "",
