@@ -114,23 +114,26 @@ app.get('/api/conversations/:id', async (req, res) => {
   }
 });
 
-// 3. Create a new conversation (or start a session)
-app.post('/api/conversations', async (req, res) => {
-  try {
-    if (!mongoose.connection.readyState) {
-      return res.status(503).json({ error: 'Database not connected' });
-    }
-    const { title = 'New Conversation' } = req.body;
-    const newConversation = new Conversation({
-      title,
-      messages: [{ role: 'system', content: 'You are a helpful AI assistant.' }]
-    });
-    await newConversation.save();
-    res.json(newConversation);
-  } catch (error) {
-    console.error('Error creating conversation:', error);
-    res.status(500).json({ error: error.message });
-  }
+// 3. Create a new conversation (or start a session)  
+app.post('/api/conversations', async (req, res) => {  
+  try {  
+    if (!mongoose.connection.readyState) {  
+      return res.status(503).json({ error: 'Database not connected' });  
+    }  
+    
+    // FIX: Ensure req.body is at least an empty object before destructuring
+    const { title = 'New Conversation' } = req?.body || {};  
+    
+    const newConversation = new Conversation({  
+      title,  
+      messages: [{ role: 'system', content: 'You are a helpful AI assistant.' }]  
+    });  
+    await newConversation.save();  
+    res.json(newConversation);  
+  } catch (error) {  
+    console.error('Error creating conversation:', error);  
+    res.status(500).json({ error: error.message });  
+  }  
 });
 
 // 4. Chat Endpoint (Updated to save to DB)
