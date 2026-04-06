@@ -32,9 +32,17 @@ const MODELS = {
 };
 
 // --- MongoDB Setup ---
+let dbConnected = false;
+
 mongoose.connect(`${MONGODB_URI}/${MONGODB_DB}`)
-  .then(() => console.log(`✅ Connected to MongoDB: ${MONGODB_DB}`))
-  .catch(err => console.error(`❌ MongoDB Connection Error:`, err));
+  .then(() => {
+    console.log(`✅ Connected to MongoDB: ${MONGODB_DB}`);
+    dbConnected = true;
+  })
+  .catch(err => {
+    console.error(`❌ MongoDB Connection Error:`, err);
+    // Don't crash the server, but log the error
+  });
 
 const ConversationSchema = new mongoose.Schema({
   title: { type: String, default: 'New Conversation' },
@@ -80,9 +88,13 @@ async function callLlama(model, messages, temperature = 0.7) {
 // 1. List all conversations
 app.get('/api/conversations', async (req, res) => {
   try {
+    if (!mongoose.connection.readyState) {
+      return res.status(503).json({ error: 'Database not connected' });
+    }
     const conversations = await Conversation.find().sort({ createdAt: -1 });
     res.json(conversations);
   } catch (error) {
+    console.error('Error fetching conversations:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -90,10 +102,14 @@ app.get('/api/conversations', async (req, res) => {
 // 2. Get a specific conversation
 app.get('/api/conversations/:id', async (req, res) => {
   try {
+    if (!mongoose.connection.readyState) {
+      return res.status(503).json({ error: 'Database not connected' });
+    }
     const conversation = await Conversation.findById(req.params.id);
     if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
     res.json(conversation);
   } catch (error) {
+    console.error('Error fetching conversation:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -101,6 +117,9 @@ app.get('/api/conversations/:id', async (req, res) => {
 // 3. Create a new conversation (or start a session)
 app.post('/api/conversations', async (req, res) => {
   try {
+    if (!mongoose.connection.readyState) {
+      return res.status(503).json({ error: 'Database not connected' });
+    }
     const { title = 'New Conversation' } = req.body;
     const newConversation = new Conversation({
       title,
@@ -109,6 +128,7 @@ app.post('/api/conversations', async (req, res) => {
     await newConversation.save();
     res.json(newConversation);
   } catch (error) {
+    console.error('Error creating conversation:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -172,6 +192,7 @@ app.post('/api/chat', async (req, res) => {
       conversationId: conversationId
     });
   } catch (error) {
+    console.error('Error in chat endpoint:', error);
     res.status(500).json({ error: error.message });
   }
 });
