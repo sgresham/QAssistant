@@ -50,10 +50,23 @@ async function callLlama(model, messages, temperature = 0.7) {
         temperature: temperature,
         stream: false // We can add streaming later for real-time feel
       },
-      { timeout: 60000 } // 60s timeout for the 27B model
+      { 
+        timeout: 120000, // Increased timeout to 120 seconds for large models
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }
     );
     return response.data.choices[0].message.content;
   } catch (error) {
+    if (error.code === 'ECONNABORTED') {
+      console.error(`[LLAMA TIMEOUT] Model: ${model}, Request timed out after 120s.`);
+      throw new Error(`LLM request timed out. The model may be overloaded or the response is too long.`);
+    }
+    if (error.response && error.response.status === 502) {
+      console.error(`[LLAMA 502] Model: ${model}, Bad Gateway. The llama.cpp server might be down or restarting.`);
+      throw new Error(`LLM server returned 502 Bad Gateway. Please check if the backend service is running.`);
+    }
     console.error(`[LLAMA ERROR] Model: ${model}, Error:`, error.message);
     throw new Error(`LLM failed: ${error.message}`);
   }
