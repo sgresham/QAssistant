@@ -4,25 +4,38 @@ import './App.css';
 
 function App() {
   const [input, setInput] = useState('');
-  const [response, setResponse] = useState('');
   const [loading, setLoading] = useState(false);
   const [modelMode, setModelMode] = useState('auto'); // 'auto', 'thinker', 'reflex'
   const [lastModel, setLastModel] = useState('');
+  
+  // Initialize chat history with a system prompt
+  const [chatHistory, setChatHistory] = useState([
+    { role: 'system', content: 'You are a helpful AI assistant.' }
+  ]);
 
   const sendMessage = async () => {
-    if (!input) return;
+    if (!input.trim()) return;
+    
+    const userMessage = { role: 'user', content: input };
+    
+    // Optimistically update UI with user message
+    setChatHistory((prev) => [...prev, userMessage]);
+    setInput('');
     setLoading(true);
-    setResponse('');
+    setLastModel('');
+
     try {
       const res = await axios.post('http://localhost:3001/api/chat', { 
-        message: input,
+        messages: [...chatHistory, userMessage],
         modelPreference: modelMode
       });
       
-      setResponse(res.data.reply);
+      const assistantMessage = { role: 'assistant', content: res.data.reply };
+      setChatHistory((prev) => [...prev, assistantMessage]);
       setLastModel(res.data.modelUsed);
     } catch (error) {
-      setResponse(`Error: ${error.message}`);
+      const errorMessage = { role: 'assistant', content: `Error: ${error.message}` };
+      setChatHistory((prev) => [...prev, errorMessage]);
     } finally {
       setLoading(false);
     }
@@ -43,7 +56,12 @@ function App() {
       </div>
 
       <div className="chat-box">
-        {response && <div className="bot-message">{response}</div>}
+        {chatHistory.map((msg, index) => (
+          <div key={index} className={msg.role === 'user' ? 'user-message' : 'bot-message'}>
+            {msg.role === 'system' ? null : <strong>{msg.role === 'user' ? 'You' : 'Assistant'}: </strong>}
+            {msg.content}
+          </div>
+        ))}
         {lastModel && <div className="meta-info">Used: {lastModel}</div>}
         {loading && <div className="loading">Thinking...</div>}
       </div>
