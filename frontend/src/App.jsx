@@ -8,9 +8,9 @@ function App() {
   const [modelMode, setModelMode] = useState('auto'); // 'auto', 'thinker', 'reflex'
   const [lastModel, setLastModel] = useState('');
   
-  // Initialize chat history with a system prompt
+  // Initialize chat history with a casual system prompt
   const [chatHistory, setChatHistory] = useState([
-    { role: 'system', content: 'You are a helpful AI assistant.' }
+    { role: 'system', content: 'Hey there! I\'m your AI assistant. What\'s up?' }
   ]);
 
   const sendMessage = async () => {
