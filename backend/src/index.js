@@ -61,11 +61,18 @@ async function callLlama(model, messages, temperature = 0.7) {
 
 // Chat Endpoint
 app.post('/api/chat', async (req, res) => {
-  const { message, modelPreference = 'auto' } = req.body;
+  const { messages, modelPreference = 'auto' } = req.body;
+
+  if (!messages || !Array.isArray(messages)) {
+    return res.status(400).json({ error: 'Invalid request: "messages" array is required.' });
+  }
+
+  // Extract the latest user message for routing logic
+  // We look for the last message with role 'user'
+  const latestUserMessage = messages.slice().reverse().find(m => m.role === 'user');
+  const currentInput = latestUserMessage ? latestUserMessage.content : '';
 
   // Simple Routing Logic
-  // In a real app, we might use the 0.8B model to *decide* which model to use.
-  // For now, we use a simple heuristic: if the message is short (< 20 chars), use Reflex.
   let selectedModel = MODELS.THINKER;
   let reason = 'Defaulting to Thinker';
 
@@ -75,7 +82,7 @@ app.post('/api/chat', async (req, res) => {
   } else if (modelPreference === 'thinker') {
     selectedModel = MODELS.THINKER;
     reason = 'User requested Thinker';
-  } else if (message.length < 20) {
+  } else if (currentInput && currentInput.length < 20) {
     selectedModel = MODELS.REFLEX;
     reason = 'Short query detected -> Reflex';
   }
@@ -83,10 +90,8 @@ app.post('/api/chat', async (req, res) => {
   console.log(`[ROUTER] Using model: ${selectedModel} (${reason})`);
 
   try {
-    const responseText = await callLlama(selectedModel, [
-      { role: "system", content: "You are a helpful AI assistant for a software engineer. You have access to local tools. Keep answers concise unless asked for detail." },
-      { role: "user", content: message }
-    ]);
+    // Pass the full messages array to maintain context
+    const responseText = await callLlama(selectedModel, messages);
 
     res.json({ 
       reply: responseText, 
