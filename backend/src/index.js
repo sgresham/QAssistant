@@ -15,6 +15,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const app = express();
 const PORT = process.env.API_PORT || 3001;
+const API_IP = process.env.API_IP || 'localhost';
 
 // Middleware
 app.use(cors());
@@ -201,6 +202,6 @@ app.post('/api/chat', async (req, res) => {
 });
 
 // Start Server
-app.listen(PORT, () => {
-  console.log(`🚀 Backend API running on http://localhost:${PORT}`);
+app.listen(PORT, API_IP, () => {
+  console.log(`🚀 Backend API running on http://${API_IP}:${PORT}`);
 });
