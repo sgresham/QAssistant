@@ -4,13 +4,13 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import axios from 'axios';
+import mongoose from 'mongoose';
 
 // 1. Set up __dirname for ES Modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// 2. Load .env from the ROOT directory (two levels up from src/index.js)
-// path.resolve(__dirname, '../../.env') goes: src -> backend -> root
+// 2. Load .env from the ROOT directory
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const app = express();
@@ -22,24 +22,32 @@ app.use(express.json());
 
 // Configuration
 const LLAMA_BASE_URL = process.env.LLAMA_ENDPOINT || 'http://10.10.10.30:8888/v1';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://10.10.10.30:27017';
+const MONGODB_DB = process.env.MONGODB_DB || 'chat_app';
 
-// Define Model IDs (Exact names as loaded in llama.cpp)
+// Define Model IDs
 const MODELS = {
-  THINKER: process.env.THINKER_MODEL, // High intelligence, slower
-  REFLEX: process.env.REFLEX_MODEL  // Fast, lower intelligence
+  THINKER: process.env.THINKER_MODEL,
+  REFLEX: process.env.REFLEX_MODEL
 };
 
-// Health Check
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    timestamp: new Date().toISOString(),
-    llamaEndpoint: LLAMA_BASE_URL,
-    availableModels: Object.values(MODELS)
-  });
+// --- MongoDB Setup ---
+mongoose.connect(`${MONGODB_URI}/${MONGODB_DB}`)
+  .then(() => console.log(`✅ Connected to MongoDB: ${MONGODB_DB}`))
+  .catch(err => console.error(`❌ MongoDB Connection Error:`, err));
+
+const ConversationSchema = new mongoose.Schema({
+  title: { type: String, default: 'New Conversation' },
+  messages: [{
+    role: { type: String, required: true }, // 'system', 'user', 'assistant'
+    content: { type: String, required: true }
+  }],
+  createdAt: { type: Date, default: Date.now }
 });
 
-// Helper: Call Llama.cpp
+const Conversation = mongoose.model('Conversation', ConversationSchema);
+
+// --- Helper: Call Llama.cpp ---
 async function callLlama(model, messages, temperature = 0.7) {
   try {
     const response = await axios.post(
@@ -48,68 +56,120 @@ async function callLlama(model, messages, temperature = 0.7) {
         model: model,
         messages: messages,
         temperature: temperature,
-        stream: false // We can add streaming later for real-time feel
+        stream: false
       },
-      { 
-        timeout: 120000, // Increased timeout to 120 seconds for large models
-        headers: {
-          'Content-Type': 'application/json'
-        }
+      {
+        timeout: 120000,
+        headers: { 'Content-Type': 'application/json' }
       }
     );
     return response.data.choices[0].message.content;
   } catch (error) {
     if (error.code === 'ECONNABORTED') {
-      console.error(`[LLAMA TIMEOUT] Model: ${model}, Request timed out after 120s.`);
-      throw new Error(`LLM request timed out. The model may be overloaded or the response is too long.`);
+      throw new Error(`LLM request timed out.`);
     }
     if (error.response && error.response.status === 502) {
-      console.error(`[LLAMA 502] Model: ${model}, Bad Gateway. The llama.cpp server might be down or restarting.`);
-      throw new Error(`LLM server returned 502 Bad Gateway. Please check if the backend service is running.`);
+      throw new Error(`LLM server returned 502 Bad Gateway.`);
     }
-    console.error(`[LLAMA ERROR] Model: ${model}, Error:`, error.message);
     throw new Error(`LLM failed: ${error.message}`);
   }
 }
 
-// Chat Endpoint
+// --- API Endpoints ---
+
+// 1. List all conversations
+app.get('/api/conversations', async (req, res) => {
+  try {
+    const conversations = await Conversation.find().sort({ createdAt: -1 });
+    res.json(conversations);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 2. Get a specific conversation
+app.get('/api/conversations/:id', async (req, res) => {
+  try {
+    const conversation = await Conversation.findById(req.params.id);
+    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+    res.json(conversation);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 3. Create a new conversation (or start a session)
+app.post('/api/conversations', async (req, res) => {
+  try {
+    const { title = 'New Conversation' } = req.body;
+    const newConversation = new Conversation({
+      title,
+      messages: [{ role: 'system', content: 'You are a helpful AI assistant.' }]
+    });
+    await newConversation.save();
+    res.json(newConversation);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 4. Chat Endpoint (Updated to save to DB)
 app.post('/api/chat', async (req, res) => {
-  const { messages, modelPreference = 'auto' } = req.body;
+  const { messages, modelPreference = 'auto', conversationId } = req.body;
 
   if (!messages || !Array.isArray(messages)) {
     return res.status(400).json({ error: 'Invalid request: "messages" array is required.' });
   }
 
-  // Extract the latest user message for routing logic
-  // We look for the last message with role 'user'
+  // Extract latest user message for routing
   const latestUserMessage = messages.slice().reverse().find(m => m.role === 'user');
   const currentInput = latestUserMessage ? latestUserMessage.content : '';
 
-  // Simple Routing Logic
+  // Routing Logic
   let selectedModel = MODELS.THINKER;
-  let reason = 'Defaulting to Thinker';
+  if (modelPreference === 'reflex') selectedModel = MODELS.REFLEX;
+  else if (modelPreference === 'thinker') selectedModel = MODELS.THINKER;
+  else if (currentInput && currentInput.length < 20) selectedModel = MODELS.REFLEX;
 
-  if (modelPreference === 'reflex') {
-    selectedModel = MODELS.REFLEX;
-    reason = 'User requested Reflex';
-  } else if (modelPreference === 'thinker') {
-    selectedModel = MODELS.THINKER;
-    reason = 'User requested Thinker';
-  } else if (currentInput && currentInput.length < 20) {
-    selectedModel = MODELS.REFLEX;
-    reason = 'Short query detected -> Reflex';
-  }
-
-  console.log(`[ROUTER] Using model: ${selectedModel} (${reason})`);
+  console.log(`[ROUTER] Using model: ${selectedModel}`);
 
   try {
-    // Pass the full messages array to maintain context
     const responseText = await callLlama(selectedModel, messages);
+    const assistantMessage = { role: 'assistant', content: responseText };
 
-    res.json({ 
-      reply: responseText, 
+    // Save/Update Conversation in DB
+    if (conversationId) {
+      // Update existing
+      const conversation = await Conversation.findById(conversationId);
+      if (conversation) {
+        // Append user and assistant messages
+        conversation.messages.push(latestUserMessage, assistantMessage);
+        // Update title if it's the first user message
+        if (conversation.messages.length === 3) { // System + User + Assistant
+          conversation.title = currentInput.substring(0, 30) + (currentInput.length > 30 ? '...' : '');
+        }
+        await conversation.save();
+      }
+    } else {
+      // Create new if no ID provided (fallback)
+      const newConv = new Conversation({
+        title: currentInput.substring(0, 30) + (currentInput.length > 30 ? '...' : ''),
+        messages: messages.concat([assistantMessage])
+      });
+      await newConv.save();
+      // Return the new ID so frontend can track it
+      res.json({
+        reply: responseText,
+        modelUsed: selectedModel,
+        conversationId: newConv._id
+      });
+      return;
+    }
+
+    res.json({
+      reply: responseText,
       modelUsed: selectedModel,
-      latency: 'calculated' // Placeholder for real latency tracking
+      conversationId: conversationId
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -119,5 +179,4 @@ app.post('/api/chat', async (req, res) => {
 // Start Server
 app.listen(PORT, () => {
   console.log(`🚀 Backend API running on http://localhost:${PORT}`);
-  console.log(`🧠 Models configured: ${MODELS.THINKER}, ${MODELS.REFLEX}`);
 });
