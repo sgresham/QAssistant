@@ -13,7 +13,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [modelMode, setModelMode] = useState('auto');
   const [lastModel, setLastModel] = useState('');
-
+  
   // Conversation State
   const [conversations, setConversations] = useState([]);
   const [activeConversationId, setActiveConversationId] = useState(null);
@@ -64,7 +64,7 @@ function App() {
     if (!input.trim()) return;
 
     const userMessage = { role: 'user', content: input };
-
+    
     // Optimistic update: Add user message
     setChatHistory((prev) => [...prev, userMessage]);
     setInput('');
@@ -83,15 +83,24 @@ function App() {
 
     try {
       // Add a placeholder for the assistant's response
-      const assistantMessageIndex = chatHistory.length;
+      const assistantMessageIndex = chatHistory.length; 
       setChatHistory((prev) => [...prev, { role: 'assistant', content: '' }]);
       streamingMessageIndex.current = assistantMessageIndex;
 
-      const response = await axios.post(`${API_URL}/api/chat`, payload, {
-        responseType: 'stream'
+      // Use fetch for streaming support
+      const response = await fetch(`${API_URL}/api/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
       });
 
-      const reader = response.data.getReader();
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.statusText}`);
+      }
+
+      const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let fullText = '';
       let newConvId = null;
@@ -107,16 +116,16 @@ function App() {
           if (line.startsWith('data: ')) {
             const dataStr = line.slice(6);
             if (dataStr === '[DONE]') continue;
-
+            
             try {
               const data = JSON.parse(dataStr);
-
+              
               if (data.type === 'new_conversation') {
                 newConvId = data.id;
               } else if (data.content) {
                 fullText += data.content;
                 setLastModel(data.model || lastModel);
-
+                
                 // Update the specific message in the history
                 setChatHistory((prev) => {
                   const newHistory = [...prev];
@@ -152,7 +161,7 @@ function App() {
         }
         return newHistory;
       });
-
+      
       const errorMessage = { role: 'assistant', content: `Error: ${error.message}` };
       setChatHistory((prev) => [...prev, errorMessage]);
     } finally {
