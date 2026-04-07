@@ -1,5 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
+import Sidebar from './components/Sidebar';
+import MainChat from './components/MainChat';
 import './App.css';
 
 // Determine API URL dynamically based on environment variables
@@ -9,20 +11,16 @@ const apiPort = import.meta.env.VITE_API_PORT || '3001';
 const API_URL = `${isHttps ? 'https' : 'http'}://${apiIp}:${apiPort}`;
 
 function App() {
-  const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [modelMode, setModelMode] = useState('auto');
   const [lastModel, setLastModel] = useState('');
-  
+
   // Conversation State
   const [conversations, setConversations] = useState([]);
   const [activeConversationId, setActiveConversationId] = useState(null);
   const [chatHistory, setChatHistory] = useState([
     { role: 'system', content: 'You are a helpful AI assistant.' }
   ]);
-
-  // Ref to track the current streaming message index
-  const streamingMessageIndex = useRef(null);
 
   useEffect(() => {
     fetchConversations();
@@ -43,7 +41,6 @@ function App() {
       setActiveConversationId(res.data._id);
       setChatHistory([{ role: 'system', content: 'You are a helpful AI assistant.' }]);
       setLastModel('');
-      setInput('');
     } catch (error) {
       console.error("Failed to start new chat", error);
     }
@@ -60,35 +57,24 @@ function App() {
     }
   };
 
-  const sendMessage = async () => {
-    if (!input.trim()) return;
-
-    const userMessage = { role: 'user', content: input };
-    
-    // Calculate the index for the assistant message BEFORE updating state
-    // Current length is N. User will be at N. Assistant will be at N+1.
-    const assistantMessageIndex = chatHistory.length + 1;
-
-    // Optimistic update: Add user message
-    setChatHistory((prev) => [...prev, userMessage]);
-    setInput('');
+  const handleSendMessage = async (userMessage, currentModelMode, currentConvId, assistantMessageIndex, streamingRef) => {
     setLoading(true);
     setLastModel('');
 
     // Prepare payload
     const payload = {
       messages: [...chatHistory, userMessage],
-      modelPreference: modelMode
+      modelPreference: currentModelMode
     };
 
-    if (activeConversationId) {
-      payload.conversationId = activeConversationId;
+    if (currentConvId) {
+      payload.conversationId = currentConvId;
     }
 
     try {
       // Add a placeholder for the assistant's response
       setChatHistory((prev) => [...prev, { role: 'assistant', content: '' }]);
-      streamingMessageIndex.current = assistantMessageIndex;
+      streamingRef.current = assistantMessageIndex;
 
       // Use fetch for streaming support
       const response = await fetch(`${API_URL}/api/chat`, {
@@ -119,21 +105,21 @@ function App() {
           if (line.startsWith('data: ')) {
             const dataStr = line.slice(6);
             if (dataStr === '[DONE]') continue;
-            
+
             try {
               const data = JSON.parse(dataStr);
-              
+
               if (data.type === 'new_conversation') {
                 newConvId = data.id;
               } else if (data.content) {
                 fullText += data.content;
                 setLastModel(data.model || lastModel);
-                
+
                 // Update the specific message in the history
                 setChatHistory((prev) => {
                   const newHistory = [...prev];
-                  newHistory[streamingMessageIndex.current] = {
-                    ...newHistory[streamingMessageIndex.current],
+                  newHistory[streamingRef.current] = {
+                    ...newHistory[streamingRef.current],
                     content: fullText
                   };
                   return newHistory;
@@ -159,74 +145,38 @@ function App() {
       // Remove the empty assistant message if error occurred
       setChatHistory((prev) => {
         const newHistory = [...prev];
-        if (newHistory[streamingMessageIndex.current]?.role === 'assistant' && newHistory[streamingMessageIndex.current].content === '') {
+        if (newHistory[streamingRef.current]?.role === 'assistant' && newHistory[streamingRef.current].content === '') {
           newHistory.pop();
         }
         return newHistory;
       });
-      
+
       const errorMessage = { role: 'assistant', content: `Error: ${error.message}` };
       setChatHistory((prev) => [...prev, errorMessage]);
     } finally {
       setLoading(false);
-      streamingMessageIndex.current = null;
+      streamingRef.current = null;
     }
   };
 
   return (
     <div className="app-container">
-      {/* Sidebar */}
-      <div className="sidebar">
-        <button onClick={startNewChat} className="new-chat-btn">+ New Chat</button>
-        <div className="chat-list">
-          {conversations.map((conv) => (
-            <div
-              key={conv._id}
-              className={`chat-item ${activeConversationId === conv._id ? 'active' : ''}`}
-              onClick={() => loadConversation(conv._id)}
-            >
-              {conv.title}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Main Chat Area */}
-      <div className="main-chat">
-        <h1>AI Assistant (Dual-Brain)</h1>
-
-        <div className="controls">
-          <label>Model Strategy: </label>
-          <select value={modelMode} onChange={(e) => setModelMode(e.target.value)}>
-            <option value="auto">Auto (Smart Routing)</option>
-            <option value="thinker">Qwen3.5-27B (High Intel)</option>
-            <option value="reflex">Qwen3.5-0.8B (Fast Reflex)</option>
-          </select>
-        </div>
-
-        <div className="chat-box">
-          {chatHistory.map((msg, index) => (
-            <div key={index} className={msg.role === 'user' ? 'user-message' : 'bot-message'}>
-              {msg.role === 'system' ? null : <strong>{msg.role === 'user' ? 'You' : 'Assistant'}: </strong>}
-              {msg.content}
-            </div>
-          ))}
-          {lastModel && !loading && <div className="meta-info">Used: {lastModel}</div>}
-          {loading && <div className="loading">Thinking...</div>}
-        </div>
-
-        <div className="input-area">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask a question..."
-            onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-            disabled={loading}
-          />
-          <button onClick={sendMessage} disabled={loading}>Send</button>
-        </div>
-      </div>
+      <Sidebar
+        conversations={conversations}
+        activeConversationId={activeConversationId}
+        onNewChat={startNewChat}
+        onLoadConversation={loadConversation}
+      />
+      <MainChat
+        chatHistory={chatHistory}
+        setChatHistory={setChatHistory}
+        modelMode={modelMode}
+        setModelMode={setModelMode}
+        activeConversationId={activeConversationId}
+        onSendMessage={handleSendMessage}
+        loading={loading}
+        lastModel={lastModel}
+      />
     </div>
   );
 }

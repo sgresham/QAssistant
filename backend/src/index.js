@@ -44,13 +44,12 @@ mongoose.connect(`${MONGODB_URI}/${MONGODB_DB}`)
   })
   .catch(err => {
     console.error(`❌ MongoDB Connection Error:`, err);
-    // Don't crash the server, but log the error
   });
 
 const ConversationSchema = new mongoose.Schema({
   title: { type: String, default: 'New Conversation' },
   messages: [{
-    role: { type: String, required: true }, // 'system', 'user', 'assistant'
+    role: { type: String, required: true },
     content: { type: String, required: true }
   }],
   createdAt: { type: Date, default: Date.now }
@@ -58,8 +57,8 @@ const ConversationSchema = new mongoose.Schema({
 
 const Conversation = mongoose.model('Conversation', ConversationSchema);
 
-// --- Helper: Call Llama.cpp ---
-async function callLlama(model, messages, temperature = 0.7) {
+// --- Helper: Call Llama.cpp with Streaming ---
+async function* streamLlama(model, messages, temperature = 0.7) {
   try {
     const response = await axios.post(
       `${LLAMA_BASE_URL}/chat/completions`,
@@ -67,20 +66,42 @@ async function callLlama(model, messages, temperature = 0.7) {
         model: model,
         messages: messages,
         temperature: temperature,
-        stream: false
+        stream: true // Enable streaming
       },
       {
-        timeout: LLM_TIMEOUT * 1000, // Convert seconds to milliseconds
-        headers: { 'Content-Type': 'application/json' }
+        timeout: LLM_TIMEOUT * 1000,
+        responseType: 'stream' // Important for axios to handle stream
       }
     );
-    return response.data.choices[0].message.content;
+
+    // Parse the stream chunks (llama.cpp sends "data: {...}" lines)
+    const stream = response.data;
+    const decoder = new TextDecoder();
+
+    for await (const chunk of stream) {
+      const text = decoder.decode(chunk, { stream: true });
+      const lines = text.split('\n');
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const dataStr = line.slice(6);
+          if (dataStr === '[DONE]') {
+            return; // End of stream
+          }
+          try {
+            const data = JSON.parse(dataStr);
+            if (data.choices && data.choices[0].delta?.content) {
+              yield data.choices[0].delta.content;
+            }
+          } catch (e) {
+            // Ignore malformed lines
+          }
+        }
+      }
+    }
   } catch (error) {
     if (error.code === 'ECONNABORTED') {
       throw new Error(`LLM request timed out after ${LLM_TIMEOUT} seconds.`);
-    }
-    if (error.response && error.response.status === 502) {
-      throw new Error(`LLM server returned 502 Bad Gateway.`);
     }
     throw new Error(`LLM failed: ${error.message}`);
   }
@@ -117,29 +138,28 @@ app.get('/api/conversations/:id', async (req, res) => {
   }
 });
 
-// 3. Create a new conversation (or start a session)  
-app.post('/api/conversations', async (req, res) => {  
-  try {  
-    if (!mongoose.connection.readyState) {  
-      return res.status(503).json({ error: 'Database not connected' });  
-    }  
-    
-    // FIX: Ensure req.body is at least an empty object before destructuring
-    const { title = 'New Conversation' } = req?.body || {};  
-    
-    const newConversation = new Conversation({  
-      title,  
-      messages: [{ role: 'system', content: 'You are a helpful AI assistant.' }]  
-    });  
-    await newConversation.save();  
-    res.json(newConversation);  
-  } catch (error) {  
-    console.error('Error creating conversation:', error);  
-    res.status(500).json({ error: error.message });  
-  }  
+// 3. Create a new conversation
+app.post('/api/conversations', async (req, res) => {
+  try {
+    if (!mongoose.connection.readyState) {
+      return res.status(503).json({ error: 'Database not connected' });
+    }
+
+    const { title = 'New Conversation' } = req?.body || {};
+
+    const newConversation = new Conversation({
+      title,
+      messages: [{ role: 'system', content: 'You are a helpful AI assistant.' }]
+    });
+    await newConversation.save();
+    res.json(newConversation);
+  } catch (error) {
+    console.error('Error creating conversation:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
-// 4. Chat Endpoint (Updated to save to DB)
+// 4. Chat Endpoint (Streaming)
 app.post('/api/chat', async (req, res) => {
   const { messages, modelPreference = 'auto', conversationId } = req.body;
 
@@ -147,7 +167,7 @@ app.post('/api/chat', async (req, res) => {
     return res.status(400).json({ error: 'Invalid request: "messages" array is required.' });
   }
 
-  // Extract latest user message for routing
+  // Extract latest user message
   const latestUserMessage = messages.slice().reverse().find(m => m.role === 'user');
   const currentInput = latestUserMessage ? latestUserMessage.content : '';
 
@@ -159,47 +179,65 @@ app.post('/api/chat', async (req, res) => {
 
   console.log(`[ROUTER] Using model: ${selectedModel}`);
 
-  try {
-    const responseText = await callLlama(selectedModel, messages);
-    const assistantMessage = { role: 'assistant', content: responseText };
+  // Set headers for streaming
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
 
-    // Save/Update Conversation in DB
+  // Prepare to save to DB after stream finishes
+  let fullResponse = '';
+  let conversationDoc = null;
+
+  try {
+    // If updating existing, load it now
     if (conversationId) {
-      // Update existing
-      const conversation = await Conversation.findById(conversationId);
-      if (conversation) {
-        // Append user and assistant messages
-        conversation.messages.push(latestUserMessage, assistantMessage);
-        // Update title if it's the first user message
-        if (conversation.messages.length === 3) { // System + User + Assistant
-          conversation.title = currentInput.substring(0, 30) + (currentInput.length > 30 ? '...' : '');
-        }
-        await conversation.save();
+      conversationDoc = await Conversation.findById(conversationId);
+      if (!conversationDoc) {
+        return res.status(404).json({ error: 'Conversation not found' });
       }
-    } else {
-      // Create new if no ID provided (fallback)
-      const newConv = new Conversation({
-        title: currentInput.substring(0, 30) + (currentInput.length > 30 ? '...' : ''),
-        messages: messages.concat([assistantMessage])
-      });
-      await newConv.save();
-      // Return the new ID so frontend can track it
-      res.json({
-        reply: responseText,
-        modelUsed: selectedModel,
-        conversationId: newConv._id
-      });
-      return;
+      // Add user message immediately
+      conversationDoc.messages.push(latestUserMessage);
+      await conversationDoc.save();
     }
 
-    res.json({
-      reply: responseText,
-      modelUsed: selectedModel,
-      conversationId: conversationId
-    });
+    // Stream the response
+    for await (const chunk of streamLlama(selectedModel, messages)) {
+      fullResponse += chunk;
+      // Send chunk to client in SSE format
+      res.write(`data: ${JSON.stringify({ content: chunk, model: selectedModel })}\n\n`);
+    }
+
+    // Stream finished, save the full assistant message to DB
+    if (conversationDoc) {
+      conversationDoc.messages.push({ role: 'assistant', content: fullResponse });
+      // Update title if it's the first user message
+      if (conversationDoc.messages.length === 3) {
+        conversationDoc.title = currentInput.substring(0, 30) + (currentInput.length > 30 ? '...' : '');
+      }
+      await conversationDoc.save();
+    } else {
+      // Create new conversation if no ID provided
+      const newConv = new Conversation({
+        title: currentInput.substring(0, 30) + (currentInput.length > 30 ? '...' : ''),
+        messages: [
+          { role: 'system', content: 'You are a helpful AI assistant.' },
+          latestUserMessage,
+          { role: 'assistant', content: fullResponse }
+        ]
+      });
+      await newConv.save();
+      // Send the new ID as a final message
+      res.write(`data: ${JSON.stringify({ type: 'new_conversation', id: newConv._id })}\n\n`);
+    }
+
+    // Signal end of stream
+    res.write('data: [DONE]\n\n');
+    res.end();
+
   } catch (error) {
     console.error('Error in chat endpoint:', error);
-    res.status(500).json({ error: error.message });
+    res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+    res.end();
   }
 });
 
