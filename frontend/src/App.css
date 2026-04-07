@@ -25,6 +25,7 @@ body {
   flex-direction: column;
   border-right: 1px solid #34495e;
   flex-shrink: 0; /* Prevent shrinking */
+  order: 1; /* Ensure it stays on the left */
 }
 
 .new-chat-btn {
@@ -75,6 +76,7 @@ body {
   flex-direction: column;
   background-color: #fff;
   overflow: hidden;
+  order: 2; /* Ensure it stays to the right of sidebar */
 }
 
 .main-chat h1 {
