@@ -65,6 +65,10 @@ function App() {
 
     const userMessage = { role: 'user', content: input };
     
+    // Calculate the index for the assistant message BEFORE updating state
+    // Current length is N. User will be at N. Assistant will be at N+1.
+    const assistantMessageIndex = chatHistory.length + 1;
+
     // Optimistic update: Add user message
     setChatHistory((prev) => [...prev, userMessage]);
     setInput('');
@@ -83,7 +87,6 @@ function App() {
 
     try {
       // Add a placeholder for the assistant's response
-      const assistantMessageIndex = chatHistory.length; 
       setChatHistory((prev) => [...prev, { role: 'assistant', content: '' }]);
       streamingMessageIndex.current = assistantMessageIndex;
 
