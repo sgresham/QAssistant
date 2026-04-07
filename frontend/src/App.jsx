@@ -1,9 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import './App.css';
 
 // Determine API URL dynamically based on environment variables
-// Vite exposes env vars via import.meta.env. They must be prefixed with VITE_
 const isHttps = import.meta.env.VITE_HTTPS_ENABLED === 'true';
 const apiIp = import.meta.env.VITE_API_IP || 'localhost';
 const apiPort = import.meta.env.VITE_API_PORT || '3001';
@@ -22,7 +21,9 @@ function App() {
     { role: 'system', content: 'You are a helpful AI assistant.' }
   ]);
 
-  // Fetch conversations on load
+  // Ref to track the current streaming message index
+  const streamingMessageIndex = useRef(null);
+
   useEffect(() => {
     fetchConversations();
   }, []);
@@ -64,39 +65,99 @@ function App() {
 
     const userMessage = { role: 'user', content: input };
 
-    // Optimistic update
+    // Optimistic update: Add user message
     setChatHistory((prev) => [...prev, userMessage]);
     setInput('');
     setLoading(true);
     setLastModel('');
 
+    // Prepare payload
+    const payload = {
+      messages: [...chatHistory, userMessage],
+      modelPreference: modelMode
+    };
+
+    if (activeConversationId) {
+      payload.conversationId = activeConversationId;
+    }
+
     try {
-      const payload = {
-        messages: [...chatHistory, userMessage],
-        modelPreference: modelMode
-      };
+      // Add a placeholder for the assistant's response
+      const assistantMessageIndex = chatHistory.length;
+      setChatHistory((prev) => [...prev, { role: 'assistant', content: '' }]);
+      streamingMessageIndex.current = assistantMessageIndex;
 
-      // Include conversationId if we are in an active session
-      if (activeConversationId) {
-        payload.conversationId = activeConversationId;
+      const response = await axios.post(`${API_URL}/api/chat`, payload, {
+        responseType: 'stream'
+      });
+
+      const reader = response.data.getReader();
+      const decoder = new TextDecoder();
+      let fullText = '';
+      let newConvId = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const text = decoder.decode(value, { stream: true });
+        const lines = text.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const dataStr = line.slice(6);
+            if (dataStr === '[DONE]') continue;
+
+            try {
+              const data = JSON.parse(dataStr);
+
+              if (data.type === 'new_conversation') {
+                newConvId = data.id;
+              } else if (data.content) {
+                fullText += data.content;
+                setLastModel(data.model || lastModel);
+
+                // Update the specific message in the history
+                setChatHistory((prev) => {
+                  const newHistory = [...prev];
+                  newHistory[streamingMessageIndex.current] = {
+                    ...newHistory[streamingMessageIndex.current],
+                    content: fullText
+                  };
+                  return newHistory;
+                });
+              } else if (data.error) {
+                throw new Error(data.error);
+              }
+            } catch (e) {
+              // Ignore parse errors for non-data lines
+            }
+          }
+        }
       }
 
-      const res = await axios.post(`${API_URL}/api/chat`, payload);
-
-      const assistantMessage = { role: 'assistant', content: res.data.reply };
-      setChatHistory((prev) => [...prev, assistantMessage]);
-      setLastModel(res.data.modelUsed);
-
-      // If a new conversation was created by the backend, update the active ID
-      if (res.data.conversationId && !activeConversationId) {
-        setActiveConversationId(res.data.conversationId);
-        fetchConversations(); // Refresh list
+      // Handle new conversation ID if created
+      if (newConvId && !activeConversationId) {
+        setActiveConversationId(newConvId);
+        fetchConversations();
       }
+
     } catch (error) {
+      console.error("Streaming error:", error);
+      // Remove the empty assistant message if error occurred
+      setChatHistory((prev) => {
+        const newHistory = [...prev];
+        if (newHistory[streamingMessageIndex.current]?.role === 'assistant' && newHistory[streamingMessageIndex.current].content === '') {
+          newHistory.pop();
+        }
+        return newHistory;
+      });
+
       const errorMessage = { role: 'assistant', content: `Error: ${error.message}` };
       setChatHistory((prev) => [...prev, errorMessage]);
     } finally {
       setLoading(false);
+      streamingMessageIndex.current = null;
     }
   };
 
@@ -138,7 +199,7 @@ function App() {
               {msg.content}
             </div>
           ))}
-          {lastModel && <div className="meta-info">Used: {lastModel}</div>}
+          {lastModel && !loading && <div className="meta-info">Used: {lastModel}</div>}
           {loading && <div className="loading">Thinking...</div>}
         </div>
 
@@ -149,6 +210,7 @@ function App() {
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask a question..."
             onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+            disabled={loading}
           />
           <button onClick={sendMessage} disabled={loading}>Send</button>
         </div>
