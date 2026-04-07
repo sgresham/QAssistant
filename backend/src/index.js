@@ -25,6 +25,7 @@ app.use(express.json());
 const LLAMA_BASE_URL = process.env.LLAMA_ENDPOINT || 'http://10.10.10.30:8888/v1';
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://10.10.10.30:27017';
 const MONGODB_DB = process.env.MONGODB_DB || 'chat_app';
+const LLM_TIMEOUT = parseInt(process.env.LLM_TIMEOUT, 10) || 600; // in seconds
 
 // Define Model IDs
 const MODELS = {
@@ -68,14 +69,14 @@ async function callLlama(model, messages, temperature = 0.7) {
         stream: false
       },
       {
-        timeout: 120000,
+        timeout: LLM_TIMEOUT * 1000, // Convert seconds to milliseconds
         headers: { 'Content-Type': 'application/json' }
       }
     );
     return response.data.choices[0].message.content;
   } catch (error) {
     if (error.code === 'ECONNABORTED') {
-      throw new Error(`LLM request timed out.`);
+      throw new Error(`LLM request timed out after ${LLM_TIMEOUT} seconds.`);
     }
     if (error.response && error.response.status === 502) {
       throw new Error(`LLM server returned 502 Bad Gateway.`);
