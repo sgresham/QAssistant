@@ -201,11 +201,10 @@ function ConversationItem({
       </div>
       <div className="conv-actions">
         <select 
-          value={currentFolderId || ""} 
-          onChange={(e) => onMoveConversation(conv._id, e.target.value)}
+          value={currentFolderId || "ungrouped"} 
+          onChange={(e) => onMoveConversation(conv._id, currentFolderId, e.target.value)}
           title="Move to folder"
         >
-          <option value="" disabled>Move...</option>
           <option value="ungrouped">Ungrouped</option>
           {folders.map(f => <option key={f._id} value={f._id}>{f.name}</option>)}
         </select>
