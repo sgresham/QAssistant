@@ -14,6 +14,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [modelMode, setModelMode] = useState('auto');
   const [lastModel, setLastModel] = useState('');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // Conversation State
   const [conversations, setConversations] = useState([]);
@@ -166,6 +167,8 @@ function App() {
         activeConversationId={activeConversationId}
         onNewChat={startNewChat}
         onLoadConversation={loadConversation}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
       />
       <MainChat
         chatHistory={chatHistory}

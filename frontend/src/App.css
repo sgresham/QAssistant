@@ -36,6 +36,23 @@ body {
   border-right: 1px solid #34495e;
   flex-shrink: 0; /* Prevent shrinking */
   order: 1; /* Ensure it stays on the left */
+  transition: width 0.3s ease;
+}
+
+.sidebar.collapsed {
+  width: 60px;
+}
+
+.sidebar-header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  border-bottom: 1px solid #34495e;
+}
+
+.sidebar.collapsed .sidebar-header {
+  padding: 10px 5px;
 }
 
 .new-chat-btn {
@@ -47,10 +64,32 @@ body {
   font-size: 1rem;
   font-weight: bold;
   transition: background-color 0.2s;
+  border-radius: 4px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .new-chat-btn:hover {
   background-color: #2980b9;
+}
+
+.toggle-sidebar-btn {
+  padding: 10px;
+  background-color: #34495e;
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: bold;
+  transition: background-color 0.2s;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.toggle-sidebar-btn:hover {
+  background-color: #465f75;
 }
 
 .chat-list {
