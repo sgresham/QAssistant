@@ -23,8 +23,14 @@ function App() {
     { role: 'system', content: 'You are a helpful AI assistant.' }
   ]);
 
+  // Folder State
+  const [folders, setFolders] = useState([]);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [isAddingFolder, setIsAddingFolder] = useState(false);
+
   useEffect(() => {
     fetchConversations();
+    fetchFolders();
   }, []);
 
   const fetchConversations = async () => {
@@ -36,12 +42,22 @@ function App() {
     }
   };
 
-  const startNewChat = async () => {
+  const fetchFolders = async () => {
     try {
-      const res = await axios.post(`${API_URL}/api/conversations`);
+      const res = await axios.get(`${API_URL}/api/folders`);
+      setFolders(res.data);
+    } catch (error) {
+      console.error("Failed to fetch folders", error);
+    }
+  };
+
+  const startNewChat = async (folderId = null) => {
+    try {
+      const res = await axios.post(`${API_URL}/api/conversations`, { folderId });
       setActiveConversationId(res.data._id);
       setChatHistory([{ role: 'system', content: 'You are a helpful AI assistant.' }]);
       setLastModel('');
+      await fetchConversations();
     } catch (error) {
       console.error("Failed to start new chat", error);
     }
@@ -183,16 +199,61 @@ function App() {
     }
   };
 
+  // Folder Handlers
+  const createFolder = async () => {
+    if (!newFolderName.trim()) return;
+    try {
+      await axios.post(`${API_URL}/api/folders`, { name: newFolderName });
+      setNewFolderName('');
+      setIsAddingFolder(false);
+      await fetchFolders();
+    } catch (error) {
+      console.error("Failed to create folder", error);
+      alert(error.response?.data?.error || "Failed to create folder");
+    }
+  };
+
+  const deleteFolder = async (folderId) => {
+    if (!window.confirm("Are you sure? Conversations in this folder will be moved to 'Ungrouped'.")) return;
+    try {
+      await axios.delete(`${API_URL}/api/folders/${folderId}`);
+      await fetchFolders();
+    } catch (error) {
+      console.error("Failed to delete folder", error);
+    }
+  };
+
+  const moveConversation = async (convId, folderId) => {
+    try {
+      await axios.put(`${API_URL}/api/conversations/${convId}`, { folderId });
+      await fetchConversations();
+    } catch (error) {
+      console.error("Failed to move conversation", error);
+    }
+  };
+
   return (
     <div className="app-container">
       <Sidebar
         conversations={conversations}
+        folders={folders}
         activeConversationId={activeConversationId}
         onNewChat={startNewChat}
         onLoadConversation={loadConversation}
         onDeleteConversation={deleteConversation}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+        onAddFolder={() => setIsAddingFolder(true)}
+        isAddingFolder={isAddingFolder}
+        newFolderName={newFolderName}
+        onNewFolderNameChange={setNewFolderName}
+        onCreateFolder={createFolder}
+        onCancelAddFolder={() => {
+          setIsAddingFolder(false);
+          setNewFolderName('');
+        }}
+        onDeleteFolder={deleteFolder}
+        onMoveConversation={moveConversation}
       />
       <MainChat
         chatHistory={chatHistory}

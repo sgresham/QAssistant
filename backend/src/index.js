@@ -46,12 +46,22 @@ mongoose.connect(`${MONGODB_URI}/${MONGODB_DB}`)
     console.error(`❌ MongoDB Connection Error:`, err);
   });
 
+// --- Folder Schema ---
+const FolderSchema = new mongoose.Schema({
+  name: { type: String, required: true, unique: true },
+  createdAt: { type: Date, default: Date.now }
+});
+
+const Folder = mongoose.model('Folder', FolderSchema);
+
+// --- Conversation Schema ---
 const ConversationSchema = new mongoose.Schema({
   title: { type: String, default: 'New Conversation' },
   messages: [{
     role: { type: String, required: true },
     content: { type: String, required: true }
   }],
+  folderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Folder', default: null },
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -107,15 +117,73 @@ async function* streamLlama(model, messages, temperature = 0.7) {
   }
 }
 
-// --- API Endpoints ---
+// --- Folder API Endpoints ---
 
-// 1. List all conversations
+// 1. List all folders
+app.get('/api/folders', async (req, res) => {
+  try {
+    if (!mongoose.connection.readyState) {
+      return res.status(503).json({ error: 'Database not connected' });
+    }
+    const folders = await Folder.find().sort({ name: 1 });
+    res.json(folders);
+  } catch (error) {
+    console.error('Error fetching folders:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 2. Create a new folder
+app.post('/api/folders', async (req, res) => {
+  try {
+    if (!mongoose.connection.readyState) {
+      return res.status(503).json({ error: 'Database not connected' });
+    }
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ error: 'Folder name is required' });
+
+    const newFolder = new Folder({ name });
+    await newFolder.save();
+    res.json(newFolder);
+  } catch (error) {
+    console.error('Error creating folder:', error);
+    if (error.code === 11000) {
+      return res.status(409).json({ error: 'Folder with this name already exists' });
+    }
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 3. Delete a folder
+app.delete('/api/folders/:id', async (req, res) => {
+  try {
+    if (!mongoose.connection.readyState) {
+      return res.status(503).json({ error: 'Database not connected' });
+    }
+    const result = await Folder.findByIdAndDelete(req.params.id);
+    if (!result) return res.status(404).json({ error: 'Folder not found' });
+    
+    // Optional: Move conversations in this folder to null (ungrouped)
+    await Conversation.updateMany({ folderId: req.params.id }, { folderId: null });
+
+    res.json({ message: 'Folder deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting folder:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- Conversation API Endpoints ---
+
+// 1. List all conversations (with folder info)
 app.get('/api/conversations', async (req, res) => {
   try {
     if (!mongoose.connection.readyState) {
       return res.status(503).json({ error: 'Database not connected' });
     }
-    const conversations = await Conversation.find().sort({ createdAt: -1 });
+    const conversations = await Conversation.find()
+      .populate('folderId', 'name')
+      .sort({ createdAt: -1 });
     res.json(conversations);
   } catch (error) {
     console.error('Error fetching conversations:', error);
@@ -129,7 +197,7 @@ app.get('/api/conversations/:id', async (req, res) => {
     if (!mongoose.connection.readyState) {
       return res.status(503).json({ error: 'Database not connected' });
     }
-    const conversation = await Conversation.findById(req.params.id);
+    const conversation = await Conversation.findById(req.params.id).populate('folderId', 'name');
     if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
     res.json(conversation);
   } catch (error) {
@@ -145,10 +213,11 @@ app.post('/api/conversations', async (req, res) => {
       return res.status(503).json({ error: 'Database not connected' });
     }
 
-    const { title = 'New Conversation' } = req?.body || {};
+    const { title = 'New Conversation', folderId = null } = req?.body || {};
 
     const newConversation = new Conversation({
       title,
+      folderId,
       messages: [{ role: 'system', content: 'You are a helpful AI assistant.' }]
     });
     await newConversation.save();
@@ -159,7 +228,29 @@ app.post('/api/conversations', async (req, res) => {
   }
 });
 
-// 4. Delete a conversation
+// 4. Update conversation (e.g., move to folder)
+app.put('/api/conversations/:id', async (req, res) => {
+  try {
+    if (!mongoose.connection.readyState) {
+      return res.status(503).json({ error: 'Database not connected' });
+    }
+    const { folderId } = req.body;
+    
+    const conversation = await Conversation.findByIdAndUpdate(
+      req.params.id,
+      { folderId: folderId || null },
+      { new: true }
+    ).populate('folderId', 'name');
+
+    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+    res.json(conversation);
+  } catch (error) {
+    console.error('Error updating conversation:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 5. Delete a conversation
 app.delete('/api/conversations/:id', async (req, res) => {
   try {
     if (!mongoose.connection.readyState) {
@@ -174,7 +265,7 @@ app.delete('/api/conversations/:id', async (req, res) => {
   }
 });
 
-// 5. Chat Endpoint (Streaming)
+// 6. Chat Endpoint (Streaming)
 app.post('/api/chat', async (req, res) => {
   const { messages, modelPreference = 'auto', conversationId } = req.body;
 
