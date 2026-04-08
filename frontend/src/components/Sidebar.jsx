@@ -36,7 +36,7 @@ function Sidebar({ conversations, activeConversationId, onNewChat, onLoadConvers
                   border: 'none',
                   color: '#e74c3c',
                   cursor: 'pointer',
-                  fontSize: '1.2rem',
+                  fontSize: '0.8rem',
                   padding: '0 5px',
                   display: 'none'
                 }}
