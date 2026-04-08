@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import '../App.css'; 
 
 function Sidebar({ 
@@ -7,7 +7,8 @@ function Sidebar({
   activeConversationId, 
   onNewChat, 
   onLoadConversation, 
-  onDeleteConversation, 
+  onDeleteConversation,
+  onRenameConversation,
   isCollapsed, 
   onToggleCollapse,
   onAddFolder,
@@ -39,6 +40,10 @@ function Sidebar({
     } else {
       onMoveConversation(convId, targetFolderId);
     }
+  };
+
+  const handleRename = (convId, newTitle) => {
+    onRenameConversation(convId, newTitle);
   };
 
   return (
@@ -82,35 +87,17 @@ function Sidebar({
               </div>
               <div className="conv-list">
                 {ungroupedConversations.map((conv) => (
-                  <div
+                  <ConversationItem
                     key={conv._id}
-                    className={`chat-item ${activeConversationId === conv._id ? 'active' : ''}`}
-                    onClick={() => onLoadConversation(conv._id)}
-                  >
-                    <div className="conv-info">
-                      <span className="conv-title">{conv.title}</span>
-                    </div>
-                    <div className="conv-actions">
-                      <select 
-                        value="" 
-                        onChange={(e) => handleMove(e, conv._id, null, e.target.value)}
-                        title="Move to folder"
-                      >
-                        <option value="">Move...</option>
-                        {folders.map(f => <option key={f._id} value={f._id}>{f.name}</option>)}
-                      </select>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDeleteConversation(conv._id);
-                        }}
-                        className="delete-chat-btn"
-                        title="Delete Conversation"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  </div>
+                    conv={conv}
+                    isActive={activeConversationId === conv._id}
+                    folders={folders}
+                    currentFolderId={null}
+                    onLoadConversation={onLoadConversation}
+                    onDeleteConversation={onDeleteConversation}
+                    onMoveConversation={handleMove}
+                    onRenameConversation={handleRename}
+                  />
                 ))}
                 {ungroupedConversations.length === 0 && <div className="empty-msg">No conversations</div>}
               </div>
@@ -128,37 +115,17 @@ function Sidebar({
                 </div>
                 <div className="conv-list">
                   {groupedConversations[folder._id]?.map((conv) => (
-                    <div
+                    <ConversationItem
                       key={conv._id}
-                      className={`chat-item ${activeConversationId === conv._id ? 'active' : ''}`}
-                      onClick={() => onLoadConversation(conv._id)}
-                    >
-                      <div className="conv-info">
-                        <span className="conv-title">{conv.title}</span>
-                      </div>
-                      <div className="conv-actions">
-                        <select 
-                          value={folder._id} 
-                          onChange={(e) => handleMove(e, conv._id, folder._id, e.target.value)}
-                          title="Move to folder"
-                        >
-                          <option value="ungrouped">Move to Ungrouped</option>
-                          {folders.filter(f => f._id !== folder._id).map(f => (
-                            <option key={f._id} value={f._id}>{f.name}</option>
-                          ))}
-                        </select>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onDeleteConversation(conv._id);
-                          }}
-                          className="delete-chat-btn"
-                          title="Delete Conversation"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    </div>
+                      conv={conv}
+                      isActive={activeConversationId === conv._id}
+                      folders={folders}
+                      currentFolderId={folder._id}
+                      onLoadConversation={onLoadConversation}
+                      onDeleteConversation={onDeleteConversation}
+                      onMoveConversation={handleMove}
+                      onRenameConversation={handleRename}
+                    />
                   ))}
                   {(!groupedConversations[folder._id] || groupedConversations[folder._id].length === 0) && (
                     <div className="empty-msg">No conversations</div>
@@ -169,6 +136,90 @@ function Sidebar({
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function ConversationItem({ 
+  conv, 
+  isActive, 
+  folders, 
+  currentFolderId, 
+  onLoadConversation, 
+  onDeleteConversation, 
+  onMoveConversation, 
+  onRenameConversation 
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState(conv.title);
+
+  const handleSave = () => {
+    if (editTitle.trim()) {
+      onRenameConversation(conv._id, editTitle.trim());
+    } else {
+      setEditTitle(conv.title);
+    }
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      handleSave();
+    } else if (e.key === 'Escape') {
+      setEditTitle(conv.title);
+      setIsEditing(false);
+    }
+  };
+
+  return (
+    <div
+      className={`chat-item ${isActive ? 'active' : ''}`}
+      onClick={() => onLoadConversation(conv._id)}
+    >
+      <div className="conv-info">
+        {isEditing ? (
+          <input
+            type="text"
+            value={editTitle}
+            onChange={(e) => setEditTitle(e.target.value)}
+            onBlur={handleSave}
+            onKeyDown={handleKeyDown}
+            className="title-input"
+            autoFocus
+          />
+        ) : (
+          <span 
+            className="conv-title" 
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsEditing(true);
+            }}
+          >
+            {conv.title}
+          </span>
+        )}
+      </div>
+      <div className="conv-actions">
+        <select 
+          value={currentFolderId || ""} 
+          onChange={(e) => onMoveConversation(conv._id, e.target.value)}
+          title="Move to folder"
+        >
+          <option value="" disabled>Move...</option>
+          <option value="ungrouped">Ungrouped</option>
+          {folders.map(f => <option key={f._id} value={f._id}>{f.name}</option>)}
+        </select>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDeleteConversation(conv._id);
+          }}
+          className="delete-chat-btn"
+          title="Delete Conversation"
+        >
+          ×
+        </button>
+      </div>
     </div>
   );
 }

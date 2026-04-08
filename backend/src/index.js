@@ -228,17 +228,25 @@ app.post('/api/conversations', async (req, res) => {
   }
 });
 
-// 4. Update conversation (e.g., move to folder)
+// 4. Update conversation (e.g., move to folder or rename)
 app.put('/api/conversations/:id', async (req, res) => {
   try {
     if (!mongoose.connection.readyState) {
       return res.status(503).json({ error: 'Database not connected' });
     }
-    const { folderId } = req.body;
+    const { folderId, title } = req.body;
     
+    const updateData = {};
+    if (folderId !== undefined) updateData.folderId = folderId || null;
+    if (title !== undefined) updateData.title = title;
+
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({ error: 'No valid update data provided' });
+    }
+
     const conversation = await Conversation.findByIdAndUpdate(
       req.params.id,
-      { folderId: folderId || null },
+      updateData,
       { new: true }
     ).populate('folderId', 'name');
 

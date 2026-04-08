@@ -97,6 +97,16 @@ function App() {
     }
   };
 
+  const renameConversation = async (id, newTitle) => {
+    try {
+      await axios.put(`${API_URL}/api/conversations/${id}`, { title: newTitle });
+      await fetchConversations();
+    } catch (error) {
+      console.error("Failed to rename conversation", error);
+      alert("Failed to rename conversation. Please try again.");
+    }
+  };
+
   const handleSendMessage = async (userMessage, currentModelMode, currentConvId, assistantMessageIndex, streamingRef) => {
     setLoading(true);
     setLastModel('');
@@ -241,6 +251,7 @@ function App() {
         onNewChat={startNewChat}
         onLoadConversation={loadConversation}
         onDeleteConversation={deleteConversation}
+        onRenameConversation={renameConversation}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
         onAddFolder={() => setIsAddingFolder(true)}
