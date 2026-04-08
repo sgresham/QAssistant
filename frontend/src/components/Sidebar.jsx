@@ -15,7 +15,7 @@ function Sidebar({ conversations, activeConversationId, onNewChat, onLoadConvers
       {!isCollapsed && (
         <div className="chat-list">
           {conversations.map((conv) => (
-            <div key={conv._id} style={{ position: 'relative' }}>
+            <div key={conv._id} className="chat-item-wrapper">
               <div
                 className={`chat-item ${activeConversationId === conv._id ? 'active' : ''}`}
                 onClick={() => onLoadConversation(conv._id)}
@@ -27,21 +27,7 @@ function Sidebar({ conversations, activeConversationId, onNewChat, onLoadConvers
                   e.stopPropagation();
                   onDeleteConversation(conv._id);
                 }}
-                style={{
-                  position: 'absolute',
-                  right: 8,
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  background: 'transparent',
-                  border: 'none',
-                  color: '#e74c3c',
-                  cursor: 'pointer',
-                  fontSize: '0.8rem',
-                  padding: '0 5px',
-                  display: 'none'
-                }}
-                onMouseOver={(e) => e.currentTarget.style.display = 'block'}
-                onMouseOut={(e) => e.currentTarget.style.display = 'none'}
+                className="delete-chat-btn"
                 title="Delete Conversation"
               >
                 ×
