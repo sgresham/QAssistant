@@ -1,7 +1,7 @@
 import React from 'react';
 import '../App.css'; 
 
-function Sidebar({ conversations, activeConversationId, onNewChat, onLoadConversation, isCollapsed, onToggleCollapse }) {
+function Sidebar({ conversations, activeConversationId, onNewChat, onLoadConversation, onDeleteConversation, isCollapsed, onToggleCollapse }) {
   return (
     <div className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
       <div className="sidebar-header">
@@ -15,12 +15,37 @@ function Sidebar({ conversations, activeConversationId, onNewChat, onLoadConvers
       {!isCollapsed && (
         <div className="chat-list">
           {conversations.map((conv) => (
-            <div
-              key={conv._id}
-              className={`chat-item ${activeConversationId === conv._id ? 'active' : ''}`}
-              onClick={() => onLoadConversation(conv._id)}
-            >
-              {conv.title}
+            <div key={conv._id} style={{ position: 'relative' }}>
+              <div
+                className={`chat-item ${activeConversationId === conv._id ? 'active' : ''}`}
+                onClick={() => onLoadConversation(conv._id)}
+              >
+                {conv.title}
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDeleteConversation(conv._id);
+                }}
+                style={{
+                  position: 'absolute',
+                  right: 8,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#e74c3c',
+                  cursor: 'pointer',
+                  fontSize: '1.2rem',
+                  padding: '0 5px',
+                  display: 'none'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.display = 'block'}
+                onMouseOut={(e) => e.currentTarget.style.display = 'none'}
+                title="Delete Conversation"
+              >
+                ×
+              </button>
             </div>
           ))}
         </div>

@@ -58,6 +58,29 @@ function App() {
     }
   };
 
+  const deleteConversation = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this conversation?")) {
+      return;
+    }
+
+    try {
+      await axios.delete(`${API_URL}/api/conversations/${id}`);
+      
+      // Update local state
+      setConversations((prev) => prev.filter((conv) => conv._id !== id));
+      
+      // If the deleted conversation was active, clear the active state and reset chat
+      if (activeConversationId === id) {
+        setActiveConversationId(null);
+        setChatHistory([{ role: 'system', content: 'You are a helpful AI assistant.' }]);
+        setLastModel('');
+      }
+    } catch (error) {
+      console.error("Failed to delete conversation", error);
+      alert("Failed to delete conversation. Please try again.");
+    }
+  };
+
   const handleSendMessage = async (userMessage, currentModelMode, currentConvId, assistantMessageIndex, streamingRef) => {
     setLoading(true);
     setLastModel('');
@@ -167,6 +190,7 @@ function App() {
         activeConversationId={activeConversationId}
         onNewChat={startNewChat}
         onLoadConversation={loadConversation}
+        onDeleteConversation={deleteConversation}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
       />
