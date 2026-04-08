@@ -159,7 +159,22 @@ app.post('/api/conversations', async (req, res) => {
   }
 });
 
-// 4. Chat Endpoint (Streaming)
+// 4. Delete a conversation
+app.delete('/api/conversations/:id', async (req, res) => {
+  try {
+    if (!mongoose.connection.readyState) {
+      return res.status(503).json({ error: 'Database not connected' });
+    }
+    const result = await Conversation.findByIdAndDelete(req.params.id);
+    if (!result) return res.status(404).json({ error: 'Conversation not found' });
+    res.json({ message: 'Conversation deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting conversation:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 5. Chat Endpoint (Streaming)
 app.post('/api/chat', async (req, res) => {
   const { messages, modelPreference = 'auto', conversationId } = req.body;
 
