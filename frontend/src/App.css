@@ -342,10 +342,11 @@ body {
 }
 
 .user-message {
-  align-self: flex-end;
+  align-self: flex-start;
   background-color: #3498db;
   color: white;
   border-bottom-right-radius: 2px;
+  margin-left: 100px;
 }
 
 .bot-message {
