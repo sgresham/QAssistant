@@ -445,6 +445,8 @@ body {
   /* Ensure newlines are preserved */
   white-space: pre-wrap;
   word-wrap: break-word;
+  /* Force the pre tag to respect whitespace */
+  tab-size: 2;
 }
 
 .markdown-content pre code {
@@ -453,6 +455,8 @@ body {
   color: #abb2bf;
   font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
   font-size: 0.9em;
+  /* Ensure the code inside pre also respects whitespace */
+  white-space: inherit;
 }
 
 .markdown-content blockquote {
