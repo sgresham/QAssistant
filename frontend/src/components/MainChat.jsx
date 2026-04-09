@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
-import '../App.css'; // Optional specific styles
+import '../App.css';
+import MarkdownRenderer from './MarkdownRenderer';
 
 function MainChat({
   chatHistory,
@@ -44,8 +45,14 @@ function MainChat({
       <div className="chat-box">
         {chatHistory.map((msg, index) => (
           <div key={index} className={msg.role === 'user' ? 'user-message' : 'bot-message'}>
-            {msg.role === 'system' ? null : <strong>{msg.role === 'user' ? 'You' : 'Assistant'}: </strong>}
-            {msg.content}
+            {msg.role === 'system' ? null : (
+              <strong style={{ display: 'block', marginBottom: '0.5rem' }}>
+                {msg.role === 'user' ? 'You' : 'Assistant'}
+              </strong>
+            )}
+            {msg.role === 'system' ? null : (
+              <MarkdownRenderer content={msg.content} />
+            )}
           </div>
         ))}
         {lastModel && !loading && <div className="meta-info">Used: {lastModel}</div>}
