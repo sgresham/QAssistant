@@ -16,15 +16,19 @@ function MarkdownRenderer({ content }) {
             const match = /language-(\w+)/.exec(className || '');
             
             if (!inline && match) {
-              // Ensure children are treated as a string and newlines are preserved
-              const codeString = String(children).replace(/\n$/, '');
+              // Convert children to string. 
+              // Note: react-markdown usually passes children as a string or array of strings.
+              // We ensure it's a string.
+              const codeString = String(children);
               
               return (
                 <SyntaxHighlighter
                   children={codeString}
                   style={vscDarkPlus}
                   language={match[1]}
-                  PreTag="div"
+                  // Use default PreTag (pre) to ensure white-space: pre is applied
+                  // If you need a div wrapper, wrap the SyntaxHighlighter in a div, 
+                  // but let SyntaxHighlighter render the pre tag internally.
                   showLineNumbers={false}
                   wrapLines={true}
                   {...props}

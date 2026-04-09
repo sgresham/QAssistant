@@ -442,12 +442,17 @@ body {
   border-radius: 6px;
   overflow-x: auto;
   margin: 1rem 0;
+  /* Ensure newlines are preserved */
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 
 .markdown-content pre code {
   background-color: transparent;
   padding: 0;
   color: #abb2bf;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 0.9em;
 }
 
 .markdown-content blockquote {
