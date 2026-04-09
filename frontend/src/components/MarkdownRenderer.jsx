@@ -14,15 +14,25 @@ function MarkdownRenderer({ content }) {
         components={{
           code({ node, inline, className, children, ...props }) {
             const match = /language-(\w+)/.exec(className || '');
-            return !inline && match ? (
-              <SyntaxHighlighter
-                children={String(children).replace(/\n$/, '')}
-                style={vscDarkPlus}
-                language={match[1]}
-                PreTag="div"
-                {...props}
-              />
-            ) : (
+            
+            if (!inline && match) {
+              // Ensure children are treated as a string and newlines are preserved
+              const codeString = String(children).replace(/\n$/, '');
+              
+              return (
+                <SyntaxHighlighter
+                  children={codeString}
+                  style={vscDarkPlus}
+                  language={match[1]}
+                  PreTag="div"
+                  showLineNumbers={false}
+                  wrapLines={true}
+                  {...props}
+                />
+              );
+            }
+
+            return (
               <code className={className} {...props}>
                 {children}
               </code>
