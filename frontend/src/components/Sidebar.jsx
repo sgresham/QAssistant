@@ -33,11 +33,20 @@ function Sidebar({
     onNewChat(folderId);
   };
 
-  const handleMove = (e, convId, currentFolderId, targetFolderId) => {
-    e.stopPropagation();
-    if (targetFolderId === 'ungrouped') {
-      onMoveConversation(convId, null);
-    } else {
+  const handleDragStart = (e, convId) => {
+    e.dataTransfer.setData('text/plain', convId);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = (e, targetFolderId) => {
+    e.preventDefault();
+    const convId = e.dataTransfer.getData('text/plain');
+    if (convId) {
       onMoveConversation(convId, targetFolderId);
     }
   };
@@ -80,7 +89,11 @@ function Sidebar({
 
           <div className="chat-list">
             {/* Ungrouped Section */}
-            <div className="folder-section">
+            <div 
+              className="folder-section"
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDrop(e, null)}
+            >
               <div className="folder-header">
                 <span className="folder-name">📂 Ungrouped</span>
                 <button onClick={() => handleNewChatInFolder(null)} className="new-in-folder-btn">+ New</button>
@@ -91,12 +104,11 @@ function Sidebar({
                     key={conv._id}
                     conv={conv}
                     isActive={activeConversationId === conv._id}
-                    folders={folders}
                     currentFolderId={null}
                     onLoadConversation={onLoadConversation}
                     onDeleteConversation={onDeleteConversation}
-                    onMoveConversation={handleMove}
                     onRenameConversation={handleRename}
+                    onDragStart={handleDragStart}
                   />
                 ))}
                 {ungroupedConversations.length === 0 && <div className="empty-msg">No conversations</div>}
@@ -105,7 +117,12 @@ function Sidebar({
 
             {/* Folder Sections */}
             {folders.map((folder) => (
-              <div key={folder._id} className="folder-section">
+              <div 
+                key={folder._id} 
+                className="folder-section"
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleDrop(e, folder._id)}
+              >
                 <div className="folder-header">
                   <span className="folder-name">📂 {folder.name}</span>
                   <div className="folder-actions">
@@ -119,12 +136,11 @@ function Sidebar({
                       key={conv._id}
                       conv={conv}
                       isActive={activeConversationId === conv._id}
-                      folders={folders}
                       currentFolderId={folder._id}
                       onLoadConversation={onLoadConversation}
                       onDeleteConversation={onDeleteConversation}
-                      onMoveConversation={handleMove}
                       onRenameConversation={handleRename}
+                      onDragStart={handleDragStart}
                     />
                   ))}
                   {(!groupedConversations[folder._id] || groupedConversations[folder._id].length === 0) && (
@@ -143,12 +159,11 @@ function Sidebar({
 function ConversationItem({ 
   conv, 
   isActive, 
-  folders, 
   currentFolderId, 
   onLoadConversation, 
   onDeleteConversation, 
-  onMoveConversation, 
-  onRenameConversation 
+  onRenameConversation,
+  onDragStart
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(conv.title);
@@ -175,6 +190,8 @@ function ConversationItem({
     <div
       className={`chat-item ${isActive ? 'active' : ''}`}
       onClick={() => onLoadConversation(conv._id)}
+      draggable
+      onDragStart={(e) => onDragStart(e, conv._id)}
     >
       <div className="conv-info">
         {isEditing ? (
@@ -200,14 +217,6 @@ function ConversationItem({
         )}
       </div>
       <div className="conv-actions">
-        <select 
-          value={currentFolderId || "ungrouped"} 
-          onChange={(e) => onMoveConversation(conv._id, currentFolderId, e.target.value)}
-          title="Move to folder"
-        >
-          <option value="ungrouped">Ungrouped</option>
-          {folders.map(f => <option key={f._id} value={f._id}>{f.name}</option>)}
-        </select>
         <button
           onClick={(e) => {
             e.stopPropagation();

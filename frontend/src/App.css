@@ -160,6 +160,15 @@ body {
 
 .folder-section {
   margin-bottom: 15px;
+  transition: background-color 0.2s, border 0.2s;
+  border: 2px dashed transparent;
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.folder-section.drag-over {
+  background-color: rgba(52, 152, 219, 0.1);
+  border-color: #3498db;
 }
 
 .folder-header {
@@ -198,14 +207,18 @@ body {
   background-color: #34495e;
   border-radius: 6px;
   font-size: 0.8rem;
-  cursor: pointer;
+  cursor: grab;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: background-color 0.2s;
+  transition: background-color 0.2s, transform 0.1s;
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.chat-item:active {
+  cursor: grabbing;
 }
 
 .chat-item:hover {
@@ -254,16 +267,6 @@ body {
 
 .chat-item:hover .conv-actions {
   opacity: 1;
-}
-
-.conv-actions select {
-  background-color: #2c3e50;
-  color: white;
-  border: 1px solid #465f75;
-  padding: 2px;
-  font-size: 0.7rem;
-  border-radius: 3px;
-  cursor: pointer;
 }
 
 .delete-chat-btn {
