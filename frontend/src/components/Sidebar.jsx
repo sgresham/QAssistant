@@ -18,7 +18,9 @@ function Sidebar({
   onCreateFolder,
   onCancelAddFolder,
   onDeleteFolder,
-  onMoveConversation
+  onMoveConversation,
+  user,
+  onLogout
 }) {
   
   // Group conversations by folder
@@ -149,6 +151,16 @@ function Sidebar({
                 </div>
               </div>
             ))}
+          </div>
+
+          {/* User Profile Section */}
+          <div className="user-profile">
+            <div className="user-info">
+              <span className="user-email">{user?.email}</span>
+            </div>
+            <button onClick={onLogout} className="logout-btn">
+              Logout
+            </button>
           </div>
         </>
       )}

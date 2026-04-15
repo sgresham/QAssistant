@@ -300,6 +300,8 @@ function App() {
         onCreateFolder={createFolder}
         onCancelFolder={() => setIsAddingFolder(false)}
         onDeleteFolder={deleteFolder}
+        user={user}
+        onLogout={handleLogout}
       />
       <MainChat
         chatHistory={chatHistory}
