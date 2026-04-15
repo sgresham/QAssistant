@@ -20,13 +20,12 @@ function MainChat({
 
     const userMessage = { role: 'user', content: input };
 
-    // Calculate the index for the assistant message BEFORE updating state
-    const assistantMessageIndex = chatHistory.length + 1;
-
     // Optimistic update: Add user message
     setChatHistory((prev) => [...prev, userMessage]);
     setInput('');
-    onSendMessage(userMessage, modelMode, activeConversationId, assistantMessageIndex, streamingMessageIndex);
+    
+    // Pass only the message string to the handler in App.jsx
+    onSendMessage(input);
   };
 
   return (
