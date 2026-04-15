@@ -7,6 +7,7 @@ import axios from 'axios';
 import mongoose from 'mongoose';
 import { Honcho } from "@honcho-ai/sdk";
 import { authenticateToken, initializeDefaultAdmin, register, login } from './auth.js';
+import { Folder, Conversation, dbConnected } from './db.js';
 
 // 1. Set up __dirname for ES Modules
 const __filename = fileURLToPath(import.meta.url);
@@ -26,8 +27,6 @@ app.use(express.json());
 
 // Configuration
 const LLAMA_BASE_URL = process.env.LLAMA_ENDPOINT || 'http://10.10.10.30:8888/v1';
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://10.10.10.30:27017';
-const MONGODB_DB = process.env.MONGODB_DB || 'chat_app';
 const LLM_TIMEOUT = parseInt(process.env.LLM_TIMEOUT, 10) || 600; // in seconds
 
 // Define Model IDs
@@ -35,21 +34,6 @@ const MODELS = {
   THINKER: process.env.THINKER_MODEL,
   REFLEX: process.env.REFLEX_MODEL
 };
-
-// --- MongoDB Setup ---
-let dbConnected = false;
-
-mongoose.connect(`${MONGODB_URI}/${MONGODB_DB}`)
-  .then(() => {
-    console.log(`✅ Connected to MongoDB: ${MONGODB_DB}`);
-    dbConnected = true;
-    // Initialize default admin after DB connection
-    initializeDefaultAdmin();
-  })
-  .catch(err => {
-    console.error(`❌ MongoDB Connection Error:`, err);
-  });
-
 
 // --- Honcho Setup ---
 const honcho = new Honcho({
@@ -59,26 +43,13 @@ const honcho = new Honcho({
 });
 
 let honchoSessionID = null;
-// --- Folder Schema ---
-const FolderSchema = new mongoose.Schema({
-  name: { type: String, required: true, unique: true },
-  createdAt: { type: Date, default: Date.now }
+
+// Initialize default admin after DB connection
+// We use a promise to ensure this runs after connection is established
+mongoose.connection.once('open', () => {
+  initializeDefaultAdmin();
 });
 
-const Folder = mongoose.model('Folder', FolderSchema);
-
-// --- Conversation Schema ---
-const ConversationSchema = new mongoose.Schema({
-  title: { type: String, default: 'New Conversation' },
-  messages: [{
-    role: { type: String, required: true },
-    content: { type: String, required: true }
-  }],
-  folderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Folder', default: null },
-  createdAt: { type: Date, default: Date.now }
-});
-
-const Conversation = mongoose.model('Conversation', ConversationSchema);
 
 // --- Helper: Call Llama.cpp with Streaming ---
 async function* streamLlama(model, messages, temperature = 0.7) {
@@ -143,7 +114,7 @@ app.post('/api/auth/login', login);
 // 1. List all folders
 app.get('/api/folders', authenticateToken, async (req, res) => {
   try {
-    if (!mongoose.connection.readyState) {
+    if (!dbConnected) {
       return res.status(503).json({ error: 'Database not connected' });
     }
     const folders = await Folder.find().sort({ name: 1 });
@@ -157,7 +128,7 @@ app.get('/api/folders', authenticateToken, async (req, res) => {
 // 2. Create a new folder
 app.post('/api/folders', authenticateToken, async (req, res) => {
   try {
-    if (!mongoose.connection.readyState) {
+    if (!dbConnected) {
       return res.status(503).json({ error: 'Database not connected' });
     }
     const { name } = req.body;
@@ -178,7 +149,7 @@ app.post('/api/folders', authenticateToken, async (req, res) => {
 // 3. Delete a folder
 app.delete('/api/folders/:id', authenticateToken, async (req, res) => {
   try {
-    if (!mongoose.connection.readyState) {
+    if (!dbConnected) {
       return res.status(503).json({ error: 'Database not connected' });
     }
     const result = await Folder.findByIdAndDelete(req.params.id);
@@ -199,7 +170,7 @@ app.delete('/api/folders/:id', authenticateToken, async (req, res) => {
 // 1. List all conversations (with folder info)
 app.get('/api/conversations', authenticateToken, async (req, res) => {
   try {
-    if (!mongoose.connection.readyState) {
+    if (!dbConnected) {
       return res.status(503).json({ error: 'Database not connected' });
     }
     const conversations = await Conversation.find()
@@ -215,7 +186,7 @@ app.get('/api/conversations', authenticateToken, async (req, res) => {
 // 2. Get a specific conversation
 app.get('/api/conversations/:id', authenticateToken, async (req, res) => {
   try {
-    if (!mongoose.connection.readyState) {
+    if (!dbConnected) {
       return res.status(503).json({ error: 'Database not connected' });
     }
     const conversation = await Conversation.findById(req.params.id).populate('folderId', 'name');
@@ -230,7 +201,7 @@ app.get('/api/conversations/:id', authenticateToken, async (req, res) => {
 // 3. Create a new conversation
 app.post('/api/conversations', authenticateToken, async (req, res) => {
   try {
-    if (!mongoose.connection.readyState) {
+    if (!dbConnected) {
       return res.status(503).json({ error: 'Database not connected' });
     }
 
@@ -252,7 +223,7 @@ app.post('/api/conversations', authenticateToken, async (req, res) => {
 // 4. Update conversation (e.g., move to folder or rename)
 app.put('/api/conversations/:id', authenticateToken, async (req, res) => {
   try {
-    if (!mongoose.connection.readyState) {
+    if (!dbConnected) {
       return res.status(503).json({ error: 'Database not connected' });
     }
     const { folderId, title } = req.body;
@@ -282,7 +253,7 @@ app.put('/api/conversations/:id', authenticateToken, async (req, res) => {
 // 5. Delete a conversation
 app.delete('/api/conversations/:id', authenticateToken, async (req, res) => {
   try {
-    if (!mongoose.connection.readyState) {
+    if (!dbConnected) {
       return res.status(503).json({ error: 'Database not connected' });
     }
     const result = await Conversation.findByIdAndDelete(req.params.id);
