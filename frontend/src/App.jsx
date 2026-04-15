@@ -207,21 +207,34 @@ function App() {
     setChatHistory((prev) => [...prev, userMessage]);
     setLoading(true);
 
+    const messagesToSend = [...chatHistory, userMessage];
+
     try {
-      const messagesToSend = [...chatHistory, userMessage];
-      
-      const response = await axios.post(`${API_URL}/api/chat`, {
-        conversationId: activeConversationId,
-        messages: messagesToSend,
-        modelMode: modelMode,
-        lastModel: lastModel
-      }, {
-        responseType: 'stream'
+      const response = await fetch(`${API_URL}/api/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          conversationId: activeConversationId,
+          messages: messagesToSend,
+          modelMode: modelMode,
+          lastModel: lastModel
+        })
       });
 
-      let fullResponse = '';
-      const reader = response.data.getReader();
+      if (!response.ok) {
+        if (response.status === 401) {
+          handleLogout();
+          return;
+        }
+        throw new Error(`Server error: ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
       const decoder = new TextDecoder();
+      let fullResponse = '';
 
       while (true) {
         const { done, value } = await reader.read();
@@ -267,7 +280,7 @@ function App() {
 
     } catch (error) {
       console.error("Error sending message", error);
-      if (error.response?.status === 401) {
+      if (error.message.includes('401')) {
         handleLogout();
       } else {
         setChatHistory((prev) => [...prev, { role: 'assistant', content: "Error: Could not connect to the AI service." }]);
