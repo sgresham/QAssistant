@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import axios from 'axios';
 import mongoose from 'mongoose';
 import { Honcho } from "@honcho-ai/sdk";
+import { authenticateToken, initializeDefaultAdmin, register, login } from './auth.js';
 
 // 1. Set up __dirname for ES Modules
 const __filename = fileURLToPath(import.meta.url);
@@ -42,6 +43,8 @@ mongoose.connect(`${MONGODB_URI}/${MONGODB_DB}`)
   .then(() => {
     console.log(`✅ Connected to MongoDB: ${MONGODB_DB}`);
     dbConnected = true;
+    // Initialize default admin after DB connection
+    initializeDefaultAdmin();
   })
   .catch(err => {
     console.error(`❌ MongoDB Connection Error:`, err);
@@ -127,10 +130,18 @@ async function* streamLlama(model, messages, temperature = 0.7) {
   }
 }
 
-// --- Folder API Endpoints ---
+// --- Auth API Endpoints ---
+
+// Register
+app.post('/api/auth/register', register);
+
+// Login
+app.post('/api/auth/login', login);
+
+// --- Folder API Endpoints (Protected) ---
 
 // 1. List all folders
-app.get('/api/folders', async (req, res) => {
+app.get('/api/folders', authenticateToken, async (req, res) => {
   try {
     if (!mongoose.connection.readyState) {
       return res.status(503).json({ error: 'Database not connected' });
@@ -144,7 +155,7 @@ app.get('/api/folders', async (req, res) => {
 });
 
 // 2. Create a new folder
-app.post('/api/folders', async (req, res) => {
+app.post('/api/folders', authenticateToken, async (req, res) => {
   try {
     if (!mongoose.connection.readyState) {
       return res.status(503).json({ error: 'Database not connected' });
@@ -165,7 +176,7 @@ app.post('/api/folders', async (req, res) => {
 });
 
 // 3. Delete a folder
-app.delete('/api/folders/:id', async (req, res) => {
+app.delete('/api/folders/:id', authenticateToken, async (req, res) => {
   try {
     if (!mongoose.connection.readyState) {
       return res.status(503).json({ error: 'Database not connected' });
@@ -183,10 +194,10 @@ app.delete('/api/folders/:id', async (req, res) => {
   }
 });
 
-// --- Conversation API Endpoints ---
+// --- Conversation API Endpoints (Protected) ---
 
 // 1. List all conversations (with folder info)
-app.get('/api/conversations', async (req, res) => {
+app.get('/api/conversations', authenticateToken, async (req, res) => {
   try {
     if (!mongoose.connection.readyState) {
       return res.status(503).json({ error: 'Database not connected' });
@@ -202,7 +213,7 @@ app.get('/api/conversations', async (req, res) => {
 });
 
 // 2. Get a specific conversation
-app.get('/api/conversations/:id', async (req, res) => {
+app.get('/api/conversations/:id', authenticateToken, async (req, res) => {
   try {
     if (!mongoose.connection.readyState) {
       return res.status(503).json({ error: 'Database not connected' });
@@ -217,7 +228,7 @@ app.get('/api/conversations/:id', async (req, res) => {
 });
 
 // 3. Create a new conversation
-app.post('/api/conversations', async (req, res) => {
+app.post('/api/conversations', authenticateToken, async (req, res) => {
   try {
     if (!mongoose.connection.readyState) {
       return res.status(503).json({ error: 'Database not connected' });
@@ -239,7 +250,7 @@ app.post('/api/conversations', async (req, res) => {
 });
 
 // 4. Update conversation (e.g., move to folder or rename)
-app.put('/api/conversations/:id', async (req, res) => {
+app.put('/api/conversations/:id', authenticateToken, async (req, res) => {
   try {
     if (!mongoose.connection.readyState) {
       return res.status(503).json({ error: 'Database not connected' });
@@ -269,7 +280,7 @@ app.put('/api/conversations/:id', async (req, res) => {
 });
 
 // 5. Delete a conversation
-app.delete('/api/conversations/:id', async (req, res) => {
+app.delete('/api/conversations/:id', authenticateToken, async (req, res) => {
   try {
     if (!mongoose.connection.readyState) {
       return res.status(503).json({ error: 'Database not connected' });
@@ -283,8 +294,8 @@ app.delete('/api/conversations/:id', async (req, res) => {
   }
 });
 
-// 6. Chat Endpoint (Streaming)
-app.post('/api/chat', async (req, res) => {
+// 6. Chat Endpoint (Streaming) (Protected)
+app.post('/api/chat', authenticateToken, async (req, res) => {
   const { messages, modelPreference = 'auto', conversationId } = req.body;
 
   if (!messages || !Array.isArray(messages)) {
