@@ -27,9 +27,13 @@ mongoose.connect(`${MONGODB_URI}/${MONGODB_DB}`)
 
 // --- Folder Schema ---
 const FolderSchema = new mongoose.Schema({
-  name: { type: String, required: true, unique: true },
+  name: { type: String, required: true },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   createdAt: { type: Date, default: Date.now }
 });
+
+// Ensure unique name per user
+FolderSchema.index({ userId: 1, name: 1 }, { unique: true });
 
 export const Folder = mongoose.model('Folder', FolderSchema);
 
@@ -41,6 +45,7 @@ const ConversationSchema = new mongoose.Schema({
     content: { type: String, required: true }
   }],
   folderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Folder', default: null },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   createdAt: { type: Date, default: Date.now }
 });
 

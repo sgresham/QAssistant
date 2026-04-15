@@ -81,13 +81,14 @@ async function* streamLlama(model, messages, temperature = 0.7) {
   }
 }
 
-// 1. List all conversations (with folder info)
+// 1. List all conversations (with folder info, filtered by user)
 export async function getConversations(req, res) {
   try {
     if (!dbConnected) {
       return res.status(503).json({ error: 'Database not connected' });
     }
-    const conversations = await Conversation.find()
+    const userId = req.user.id;
+    const conversations = await Conversation.find({ userId })
       .populate('folderId', 'name')
       .sort({ createdAt: -1 });
     res.json(conversations);
@@ -97,13 +98,14 @@ export async function getConversations(req, res) {
   }
 }
 
-// 2. Get a specific conversation
+// 2. Get a specific conversation (filtered by user)
 export async function getConversation(req, res) {
   try {
     if (!dbConnected) {
       return res.status(503).json({ error: 'Database not connected' });
     }
-    const conversation = await Conversation.findById(req.params.id).populate('folderId', 'name');
+    const userId = req.user.id;
+    const conversation = await Conversation.findOne({ _id: req.params.id, userId }).populate('folderId', 'name');
     if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
     res.json(conversation);
   } catch (error) {
@@ -112,7 +114,7 @@ export async function getConversation(req, res) {
   }
 }
 
-// 3. Create a new conversation
+// 3. Create a new conversation (assigned to user)
 export async function createConversation(req, res) {
   try {
     if (!dbConnected) {
@@ -120,10 +122,12 @@ export async function createConversation(req, res) {
     }
 
     const { title = 'New Conversation', folderId = null } = req?.body || {};
+    const userId = req.user.id;
 
     const newConversation = new Conversation({
       title,
       folderId,
+      userId,
       messages: [{ role: 'system', content: 'You are a helpful AI assistant.' }]
     });
     await newConversation.save();
@@ -134,13 +138,14 @@ export async function createConversation(req, res) {
   }
 }
 
-// 4. Update conversation (e.g., move to folder or rename)
+// 4. Update conversation (e.g., move to folder or rename, only if owned by user)
 export async function updateConversation(req, res) {
   try {
     if (!dbConnected) {
       return res.status(503).json({ error: 'Database not connected' });
     }
     const { folderId, title } = req.body;
+    const userId = req.user.id;
 
     const updateData = {};
     if (folderId !== undefined) updateData.folderId = folderId || null;
@@ -150,8 +155,8 @@ export async function updateConversation(req, res) {
       return res.status(400).json({ error: 'No valid update data provided' });
     }
 
-    const conversation = await Conversation.findByIdAndUpdate(
-      req.params.id,
+    const conversation = await Conversation.findOneAndUpdate(
+      { _id: req.params.id, userId },
       updateData,
       { new: true }
     ).populate('folderId', 'name');
@@ -164,13 +169,14 @@ export async function updateConversation(req, res) {
   }
 }
 
-// 5. Delete a conversation
+// 5. Delete a conversation (only if owned by user)
 export async function deleteConversation(req, res) {
   try {
     if (!dbConnected) {
       return res.status(503).json({ error: 'Database not connected' });
     }
-    const result = await Conversation.findByIdAndDelete(req.params.id);
+    const userId = req.user.id;
+    const result = await Conversation.findOneAndDelete({ _id: req.params.id, userId });
     if (!result) return res.status(404).json({ error: 'Conversation not found' });
     res.json({ message: 'Conversation deleted successfully' });
   } catch (error) {
@@ -182,6 +188,7 @@ export async function deleteConversation(req, res) {
 // 6. Chat Endpoint (Streaming)
 export async function chat(req, res) {
   const { messages, modelPreference = 'auto', conversationId } = req.body;
+  const userId = req.user.id;
 
   if (!messages || !Array.isArray(messages)) {
     return res.status(400).json({ error: 'Invalid request: "messages" array is required.' });
@@ -209,10 +216,10 @@ export async function chat(req, res) {
   let conversationDoc = null;
 
   try {
-    // If updating existing, load it now
+    // If updating existing, load it now (ensure ownership)
     if (conversationId) {
       honchoSessionID = conversationId;
-      conversationDoc = await Conversation.findById(conversationId);
+      conversationDoc = await Conversation.findOne({ _id: conversationId, userId });
       if (!conversationDoc) {
         return res.status(404).json({ error: 'Conversation not found' });
       }
@@ -240,6 +247,7 @@ export async function chat(req, res) {
       // Create new conversation if no ID provided
       const newConv = new Conversation({
         title: currentInput.substring(0, 30) + (currentInput.length > 30 ? '...' : ''),
+        userId,
         messages: [
           { role: 'system', content: 'You are a helpful AI assistant.' },
           latestUserMessage,
