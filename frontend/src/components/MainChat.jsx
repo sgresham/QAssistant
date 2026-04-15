@@ -18,14 +18,10 @@ function MainChat({
   const handleSend = async () => {
     if (!input.trim()) return;
 
-    const userMessage = { role: 'user', content: input };
-
-    // Optimistic update: Add user message
-    setChatHistory((prev) => [...prev, userMessage]);
-    setInput('');
-    
     // Pass only the message string to the handler in App.jsx
+    // App.jsx will handle adding the message to chatHistory
     onSendMessage(input);
+    setInput('');
   };
 
   return (
