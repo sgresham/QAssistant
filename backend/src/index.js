@@ -5,6 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import axios from 'axios';
 import mongoose from 'mongoose';
+import { Honcho } from "@honcho-ai/sdk";
 
 // 1. Set up __dirname for ES Modules
 const __filename = fileURLToPath(import.meta.url);
@@ -46,6 +47,15 @@ mongoose.connect(`${MONGODB_URI}/${MONGODB_DB}`)
     console.error(`❌ MongoDB Connection Error:`, err);
   });
 
+
+// --- Honcho Setup ---
+const honcho = new Honcho({
+  apiKey: process.env.HONCHO_API_KEY,
+  baseURL: process.env.HONCHO_API_URL,
+  workspaceId: "Qtest",
+});
+
+let honchoSessionID = null;
 // --- Folder Schema ---
 const FolderSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true },
@@ -162,7 +172,7 @@ app.delete('/api/folders/:id', async (req, res) => {
     }
     const result = await Folder.findByIdAndDelete(req.params.id);
     if (!result) return res.status(404).json({ error: 'Folder not found' });
-    
+
     // Optional: Move conversations in this folder to null (ungrouped)
     await Conversation.updateMany({ folderId: req.params.id }, { folderId: null });
 
@@ -235,7 +245,7 @@ app.put('/api/conversations/:id', async (req, res) => {
       return res.status(503).json({ error: 'Database not connected' });
     }
     const { folderId, title } = req.body;
-    
+
     const updateData = {};
     if (folderId !== undefined) updateData.folderId = folderId || null;
     if (title !== undefined) updateData.title = title;
@@ -305,6 +315,7 @@ app.post('/api/chat', async (req, res) => {
   try {
     // If updating existing, load it now
     if (conversationId) {
+      honchoSessionID = conversationId;
       conversationDoc = await Conversation.findById(conversationId);
       if (!conversationDoc) {
         return res.status(404).json({ error: 'Conversation not found' });
@@ -340,9 +351,37 @@ app.post('/api/chat', async (req, res) => {
         ]
       });
       await newConv.save();
+      honchoSessionID = newConv._id
+
       // Send the new ID as a final message
       res.write(`data: ${JSON.stringify({ type: 'new_conversation', id: newConv._id })}\n\n`);
     }
+    // Add to Honcho
+    const assistant = await honcho.peer("Q");
+    const steve = await honcho.peer("steve");
+
+    await honcho.peers();
+
+    const session = await honcho.session(honchoSessionID, {
+      config: {
+        reasoning: { enabled: true },
+        peer_card: { create: true, use: true },
+        summary: {
+          enabled: true,
+          messages_per_short_summary: 15,
+          messages_per_long_summary: 45
+        }
+      }
+    });
+    await session.addPeers([steve, assistant]);
+    await session.addMessages([
+      steve.message(latestUserMessage.content),
+      assistant.message(fullResponse),
+    ]);
+    // const status = await honcho.queueStatus();
+    // console.log(`Honcho status: ${JSON.stringify(status)}`)
+    console.log('Honcho Complete')
+
 
     // Signal end of stream
     res.write('data: [DONE]\n\n');

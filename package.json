@@ -5,10 +5,10 @@
   "main": "index.js",
   "scripts": {
     "backend": "cd backend && node src/index.js",
-    "backend:dev": "cd backend && npm run dev", 
+    "backend:dev": "cd backend && npm run dev",
     "frontend": "cd frontend && npm run dev",
     "start": "./start.ps1",
-    "start:dev": "./start.ps1" 
+    "start:dev": "./start.ps1"
   },
   "keywords": [],
   "author": "",
@@ -16,5 +16,8 @@
   "devDependencies": {
     "concurrently": "^9.2.1",
     "wait-on": "^9.0.4"
+  },
+  "dependencies": {
+    "@honcho-ai/sdk": "^2.1.1"
   }
 }
