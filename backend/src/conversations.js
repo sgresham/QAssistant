@@ -15,6 +15,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 // Configuration
 const LLAMA_BASE_URL = process.env.LLAMA_ENDPOINT || 'http://10.10.10.30:8888/v1';
 const LLM_TIMEOUT = parseInt(process.env.LLM_TIMEOUT, 10) || 600; // in seconds
+const USER_TIMEZONE = 'Australia/Sydney'; // Or fetch from user profile
 
 // Define Model IDs
 const MODELS = {
@@ -30,6 +31,85 @@ const honcho = new Honcho({
 });
 
 let honchoSessionID = null;
+
+/**
+ * Updates the system message in the messages array with the current date/time.
+ * If no system message exists, it creates one.
+ * 
+ * @param {Array} messages - The original messages array
+ * @param {string} timezone - IANA timezone string (e.g., 'Australia/Sydney')
+ * @returns {Array} The modified messages array with the fresh timestamp
+ */
+function generateSystemPrompt(state, messages, timezone = 'Australia/Sydney') {
+  const now = new Date();
+
+  // 1. Define the new timestamp string
+  const dateOptions = {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone: timezone
+  };
+
+  const timeOptions = {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: timezone,
+    hour12: true
+  };
+
+  const dateStr = now.toLocaleDateString('en-AU', dateOptions);
+  const timeStr = now.toLocaleTimeString('en-AU', timeOptions);
+
+  const creationTimeStamp = `The start of the conversation commenced when date was ${dateStr} and the time was ${timeStr} (${timezone}).`;
+  const timestampContent = `The current date is ${dateStr} and the time is ${timeStr} (${timezone}).`;
+
+  // Find the system message index
+  const systemIndex = messages.findIndex(msg => msg.role === 'system');
+
+  if (systemIndex === -1) {
+    // If no system message exists yet, create one
+    messages.unshift({ role: 'system', content: creationTimeStamp });
+    return messages;
+  }
+
+  let existingContent = messages[systemIndex].content;
+
+  // 2. CLEANUP: Remove old timestamp lines to prevent duplication
+  // We look for lines starting with "The start of..." or "The current date is..."
+  // and remove them. This ensures we only have the *latest* version.
+  const lines = existingContent.split('\n');
+  const filteredLines = lines.filter(line => {
+    // Ignore lines that are timestamp definitions
+    return !line.trim().startsWith('The current date is');
+  });
+
+  existingContent = filteredLines.join('\n');
+
+  // 3. UPDATE: Add the new content based on state
+  if (state === 'new') {
+    // If it's a new conversation, we might want to keep the "start" line 
+    // and ensure no "current" line exists, or vice versa depending on your logic.
+    // Usually, "new" means we just set the start time.
+    // We ensure the start time is present and the current time is NOT present (unless you want both).
+    // Let's assume "new" sets the start time, and subsequent calls update the current time.
+
+    // Re-add the start time if it was filtered out (it should be, but let's be safe)
+    // if (!existingContent.includes('The start of the conversation')) {
+    //   existingContent = existingContent.trim() + '\n\n' + creationTimeStamp;
+    // }
+  } else {
+    // If not new, we update the "current date" line.
+    // We remove any old "current date" line (handled by filter above) and add the new one.
+    existingContent = existingContent.trim() + '\n\n' + timestampContent;
+  }
+
+  // 4. Assign the cleaned and updated content back
+  messages[systemIndex].content = existingContent;
+
+  return messages;
+}
 
 // --- Helper: Call Llama.cpp with Streaming ---
 async function* streamLlama(model, messages, temperature = 0.7) {
@@ -124,11 +204,14 @@ export async function createConversation(req, res) {
     const { title = 'New Conversation', folderId = null } = req?.body || {};
     const userId = req.user.id;
 
+    let systemMessage = [{ role: 'system', content: `You are a helpful AI assistant.` }]
+    const messages = generateSystemPrompt('new', systemMessage, USER_TIMEZONE)
+
     const newConversation = new Conversation({
       title,
       folderId,
       userId,
-      messages: [{ role: 'system', content: 'You are a helpful AI assistant.' }]
+      messages
     });
     await newConversation.save();
     res.json(newConversation);
@@ -194,6 +277,7 @@ export async function chat(req, res) {
     return res.status(400).json({ error: 'Invalid request: "messages" array is required.' });
   }
 
+  const updatedMessage = generateSystemPrompt('old', messages, USER_TIMEZONE)
   // Extract latest user message
   const latestUserMessage = messages.slice().reverse().find(m => m.role === 'user');
   const currentInput = latestUserMessage ? latestUserMessage.content : '';
@@ -229,7 +313,7 @@ export async function chat(req, res) {
     }
 
     // Stream the response
-    for await (const chunk of streamLlama(selectedModel, messages)) {
+    for await (const chunk of streamLlama(selectedModel, updatedMessage)) {
       fullResponse += chunk;
       // Send chunk to client in SSE format
       res.write(`data: ${JSON.stringify({ content: chunk, model: selectedModel })}\n\n`);
@@ -245,14 +329,12 @@ export async function chat(req, res) {
       await conversationDoc.save();
     } else {
       // Create new conversation if no ID provided
+      let systemMessage = [{ role: 'system', content: `You are a helpful AI assistant.` }]
+      const updatedMessage = generateSystemPrompt('old', messages, USER_TIMEZONE)
       const newConv = new Conversation({
         title: currentInput.substring(0, 30) + (currentInput.length > 30 ? '...' : ''),
         userId,
-        messages: [
-          { role: 'system', content: 'You are a helpful AI assistant.' },
-          latestUserMessage,
-          { role: 'assistant', content: fullResponse }
-        ]
+        updatedMessage
       });
       await newConv.save();
       honchoSessionID = newConv._id
@@ -261,8 +343,8 @@ export async function chat(req, res) {
       res.write(`data: ${JSON.stringify({ type: 'new_conversation', id: newConv._id })}\n\n`);
     }
     // Add to Honcho
-    const assistant = await honcho.peer("Q");
-    const steve = await honcho.peer("steve");
+    const assistant = await honcho.peer("q");
+    const user = await honcho.peer(userId);
 
     await honcho.peers();
 
@@ -277,9 +359,12 @@ export async function chat(req, res) {
         }
       }
     });
-    await session.addPeers([steve, assistant]);
+
+    await session.addPeers(user, assistant)
+    await session.setPeerConfiguration(user, { observeOthers: true, observeMe: true })
+    await session.setPeerConfiguration("q", { observeOthers: true, observeMe: false })
     await session.addMessages([
-      steve.message(latestUserMessage.content),
+      user.message(latestUserMessage.content),
       assistant.message(fullResponse),
     ]);
     // const status = await honcho.queueStatus();

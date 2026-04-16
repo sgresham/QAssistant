@@ -249,7 +249,6 @@ function App() {
               const json = JSON.parse(line.slice(6));
               if (json.content) {
                 fullResponse += json.content;
-                console.log(`Full Response: ${fullResponse}`)
                 setChatHistory((prev) => {
                   const newHistory = [...prev];
                   if (newHistory[newHistory.length - 1].role === 'assistant') {
