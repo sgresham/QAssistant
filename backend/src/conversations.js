@@ -169,7 +169,7 @@ export async function getConversations(req, res) {
     }
     const userId = req.user.id;
     const conversations = await Conversation.find({ userId })
-      .populate('folderId', 'name')
+      .populate('folderId', 'name systemPrompt')
       .sort({ createdAt: -1 });
     res.json(conversations);
   } catch (error) {
@@ -185,7 +185,7 @@ export async function getConversation(req, res) {
       return res.status(503).json({ error: 'Database not connected' });
     }
     const userId = req.user.id;
-    const conversation = await Conversation.findOne({ _id: req.params.id, userId }).populate('folderId', 'name');
+    const conversation = await Conversation.findOne({ _id: req.params.id, userId }).populate('folderId', 'name systemPrompt');
     if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
     res.json(conversation);
   } catch (error) {
@@ -204,8 +204,18 @@ export async function createConversation(req, res) {
     const { title = 'New Conversation', folderId = null } = req?.body || {};
     const userId = req.user.id;
 
-    let systemMessage = [{ role: 'system', content: `You are a helpful AI assistant.` }]
-    const messages = generateSystemPrompt('new', systemMessage, USER_TIMEZONE)
+    let systemContent = `You are a helpful AI assistant.`;
+    
+    // If a folder is specified, check for a custom system prompt
+    if (folderId) {
+      const folder = await Folder.findOne({ _id: folderId, userId: userId });
+      if (folder && folder.systemPrompt) {
+        systemContent = folder.systemPrompt;
+      }
+    }
+
+    let systemMessage = [{ role: 'system', content: systemContent }];
+    const messages = generateSystemPrompt('new', systemMessage, USER_TIMEZONE);
 
     const newConversation = new Conversation({
       title,
@@ -242,7 +252,7 @@ export async function updateConversation(req, res) {
       { _id: req.params.id, userId },
       updateData,
       { new: true }
-    ).populate('folderId', 'name');
+    ).populate('folderId', 'name systemPrompt');
 
     if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
     res.json(conversation);
@@ -277,7 +287,7 @@ export async function chat(req, res) {
     return res.status(400).json({ error: 'Invalid request: "messages" array is required.' });
   }
 
-  const updatedMessage = generateSystemPrompt('old', messages, USER_TIMEZONE)
+  const updatedMessage = generateSystemPrompt('old', messages, USER_TIMEZONE);
   // Extract latest user message
   const latestUserMessage = messages.slice().reverse().find(m => m.role === 'user');
   const currentInput = latestUserMessage ? latestUserMessage.content : '';
@@ -329,15 +339,21 @@ export async function chat(req, res) {
       await conversationDoc.save();
     } else {
       // Create new conversation if no ID provided
-      let systemMessage = [{ role: 'system', content: `You are a helpful AI assistant.` }]
-      const updatedMessage = generateSystemPrompt('old', messages, USER_TIMEZONE)
+      let systemContent = `You are a helpful AI assistant.`;
+      // Note: If creating a new conversation via chat endpoint without explicit folderId in body,
+      // we default to the base prompt. If you want to support folder context here, 
+      // you'd need to pass folderId in the request body.
+      
+      let systemMessage = [{ role: 'system', content: systemContent }];
+      const updatedMessage = generateSystemPrompt('old', systemMessage, USER_TIMEZONE);
+      
       const newConv = new Conversation({
         title: currentInput.substring(0, 30) + (currentInput.length > 30 ? '...' : ''),
         userId,
-        updatedMessage
+        messages: updatedMessage
       });
       await newConv.save();
-      honchoSessionID = newConv._id
+      honchoSessionID = newConv._id;
 
       // Send the new ID as a final message
       res.write(`data: ${JSON.stringify({ type: 'new_conversation', id: newConv._id })}\n\n`);
@@ -360,16 +376,16 @@ export async function chat(req, res) {
       }
     });
 
-    await session.addPeers(user, assistant)
-    await session.setPeerConfiguration(user, { observeOthers: true, observeMe: true })
-    await session.setPeerConfiguration("q", { observeOthers: true, observeMe: false })
+    await session.addPeers(user, assistant);
+    await session.setPeerConfiguration(user, { observeOthers: true, observeMe: true });
+    await session.setPeerConfiguration("q", { observeOthers: true, observeMe: false });
     await session.addMessages([
       user.message(latestUserMessage.content),
       assistant.message(fullResponse),
     ]);
     // const status = await honcho.queueStatus();
     // console.log(`Honcho status: ${JSON.stringify(status)}`)
-    console.log('Honcho Complete')
+    console.log('Honcho Complete');
 
 
     // Signal end of stream

@@ -21,12 +21,12 @@ export async function createFolder(req, res) {
     if (!dbConnected) {
       return res.status(503).json({ error: 'Database not connected' });
     }
-    const { name } = req.body;
+    const { name, systemPrompt } = req.body;
     const userId = req.user.id;
 
     if (!name) return res.status(400).json({ error: 'Folder name is required' });
 
-    const newFolder = new Folder({ name, userId });
+    const newFolder = new Folder({ name, userId, systemPrompt });
     await newFolder.save();
     res.json(newFolder);
   } catch (error) {
@@ -38,7 +38,38 @@ export async function createFolder(req, res) {
   }
 }
 
-// 3. Delete a folder (only if owned by user)
+// 3. Update a folder (rename or update system prompt)
+export async function updateFolder(req, res) {
+  try {
+    if (!dbConnected) {
+      return res.status(503).json({ error: 'Database not connected' });
+    }
+    const { name, systemPrompt } = req.body;
+    const userId = req.user.id;
+
+    const updateData = {};
+    if (name !== undefined) updateData.name = name;
+    if (systemPrompt !== undefined) updateData.systemPrompt = systemPrompt;
+
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({ error: 'No valid update data provided' });
+    }
+
+    const folder = await Folder.findOneAndUpdate(
+      { _id: req.params.id, userId },
+      updateData,
+      { new: true }
+    );
+
+    if (!folder) return res.status(404).json({ error: 'Folder not found' });
+    res.json(folder);
+  } catch (error) {
+    console.error('Error updating folder:', error);
+    res.status(500).json({ error: error.message });
+  }
+}
+
+// 4. Delete a folder (only if owned by user)
 export async function deleteFolder(req, res) {
   try {
     if (!dbConnected) {
