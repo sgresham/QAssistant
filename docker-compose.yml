@@ -14,10 +14,10 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      - PORT=3000
+      - PORT=3001
       - MONGODB_URI=${MONGODB_URI} # Use .env file for secrets
       - JWT_SECRET=${JWT_SECRET}
-      - PORT=3000
+      - PORT=3001
     volumes:
       - ./backend/src:/app/src # Optional: for development hot reloading if needed, but usually not in prod
     depends_on:
