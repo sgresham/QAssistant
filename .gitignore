@@ -79,3 +79,4 @@ frontend/public/build/
 # Dockerfile*
 .aider*
 .cssjunk
+cloudflare.ini
