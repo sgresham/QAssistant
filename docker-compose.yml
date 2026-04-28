@@ -35,8 +35,6 @@ services:
       - ./nginx/certs:/etc/nginx/certs
       - ./nginx/data/certs:/etc/letsencrypt # Persist Let's Encrypt certs
       - ./nginx/data/www:/var/www/certbot   # For ACME challenges
-      - /etc/letsencrypt/live/qassistant.alacritycore.com:/etc/ssl/certs:ro
-      - /etc/letsencrypt/archive/qassistant.alacritycore.com:/etc/ssl/archive:ro
     depends_on:
       - frontend
       - backend
