@@ -205,7 +205,7 @@ export async function createConversation(req, res) {
     const userId = req.user.id;
 
     let systemContent = `You are a helpful AI assistant.`;
-    
+
     // If a folder is specified, check for a custom system prompt
     if (folderId) {
       const folder = await Folder.findOne({ _id: folderId, userId: userId });
@@ -312,6 +312,7 @@ export async function chat(req, res) {
   try {
     // If updating existing, load it now (ensure ownership)
     if (conversationId) {
+      console.log(`Conversation ID: ${conversationId}`)
       honchoSessionID = conversationId;
       conversationDoc = await Conversation.findOne({ _id: conversationId, userId });
       if (!conversationDoc) {
@@ -321,32 +322,16 @@ export async function chat(req, res) {
       conversationDoc.messages.push(latestUserMessage);
       await conversationDoc.save();
     }
-
-    // Stream the response
-    for await (const chunk of streamLlama(selectedModel, updatedMessage)) {
-      fullResponse += chunk;
-      // Send chunk to client in SSE format
-      res.write(`data: ${JSON.stringify({ content: chunk, model: selectedModel })}\n\n`);
-    }
-
-    // Stream finished, save the full assistant message to DB
-    if (conversationDoc) {
-      conversationDoc.messages.push({ role: 'assistant', content: fullResponse });
-      // Update title if it's the first user message
-      if (conversationDoc.messages.length === 3) {
-        conversationDoc.title = currentInput.substring(0, 30) + (currentInput.length > 30 ? '...' : '');
-      }
-      await conversationDoc.save();
-    } else {
+    else {
       // Create new conversation if no ID provided
       let systemContent = `You are a helpful AI assistant.`;
       // Note: If creating a new conversation via chat endpoint without explicit folderId in body,
       // we default to the base prompt. If you want to support folder context here, 
       // you'd need to pass folderId in the request body.
-      
+
       let systemMessage = [{ role: 'system', content: systemContent }];
       const updatedMessage = generateSystemPrompt('old', systemMessage, USER_TIMEZONE);
-      
+
       const newConv = new Conversation({
         title: currentInput.substring(0, 30) + (currentInput.length > 30 ? '...' : ''),
         userId,
@@ -358,6 +343,7 @@ export async function chat(req, res) {
       // Send the new ID as a final message
       res.write(`data: ${JSON.stringify({ type: 'new_conversation', id: newConv._id })}\n\n`);
     }
+
     // Add to Honcho
     const assistant = await honcho.peer("q");
     const user = await honcho.peer(userId);
@@ -376,9 +362,34 @@ export async function chat(req, res) {
       }
     });
 
+    // HONCHO TIME
     await session.addPeers(user, assistant);
     await session.setPeerConfiguration(user, { observeOthers: true, observeMe: true });
     await session.setPeerConfiguration("q", { observeOthers: true, observeMe: false });
+    const context = await session.context({ summary: true, tokens: 1500, peerTarget: userId });
+    const openaiMessages = context.toOpenAI(assistant);
+    // console.log(`Context from Honcho:  ${JSON.stringify(await session.context({summary: true, tokens: 1500, peerTarget: userId}))}`)
+    // console.log(`Search from Honcho: ${JSON.stringify(await session.search("birthdays and action items"))}`)
+
+    // unshift() accepts multiple arguments, so use spread to unpack the array
+    updatedMessage.unshift(...openaiMessages);
+    console.log(`updatedMessage: ${JSON.stringify(updatedMessage)}`)
+    // Stream the response
+    for await (const chunk of streamLlama(selectedModel, updatedMessage)) {
+      fullResponse += chunk;
+      // Send chunk to client in SSE format
+      res.write(`data: ${JSON.stringify({ content: chunk, model: selectedModel })}\n\n`);
+    }
+
+    // Stream finished, save the full assistant message to DB
+
+    conversationDoc.messages.push({ role: 'assistant', content: fullResponse });
+    // Update title if it's the first user message
+    if (conversationDoc.messages.length === 3) {
+      conversationDoc.title = currentInput.substring(0, 30) + (currentInput.length > 30 ? '...' : '');
+    }
+    await conversationDoc.save();
+
     await session.addMessages([
       user.message(latestUserMessage.content),
       assistant.message(fullResponse),

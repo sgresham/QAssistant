@@ -32,8 +32,8 @@ function MainChat({
         <label>Model Strategy: </label>
         <select value={modelMode} onChange={(e) => setModelMode(e.target.value)}>
           <option value="auto">Auto (Smart Routing)</option>
-          <option value="thinker">Qwen3.5-27B (High Intel)</option>
-          <option value="reflex">Qwen3.5-0.8B (Fast Reflex)</option>
+          <option value="thinker">(High Intel)</option>
+          <option value="reflex">(Fast Reflex)</option>
         </select>
       </div>
 

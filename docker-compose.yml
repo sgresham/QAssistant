@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  # --- Frontend Service ---
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    # No ports exposed directly; Nginx handles this
+
+  # --- Backend Service ---
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      - PORT=3000
+      - MONGODB_URI=${MONGODB_URI} # Use .env file for secrets
+      - JWT_SECRET=${JWT_SECRET}
+      - PORT=3000
+    volumes:
+      - ./backend/src:/app/src # Optional: for development hot reloading if needed, but usually not in prod
+    depends_on:
+      - frontend
+
+  # --- Nginx Reverse Proxy ---
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/certs:/etc/nginx/certs
+      - ./nginx/data/certs:/etc/letsencrypt # Persist Let's Encrypt certs
+      - ./nginx/data/www:/var/www/certbot   # For ACME challenges
+    depends_on:
+      - frontend
+      - backend
+
+  # --- Certbot Service (Let's Encrypt) ---
+  certbot:
+    image: certbot/certbot
+    restart: unless-stopped
+    volumes:
+      - ./nginx/data/certs:/etc/letsencrypt
+      - ./nginx/data/www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot --webroot-path=/var/www/certbot --quiet; sleep 12h & wait $${!}; done;'"
+    depends_on:
+      - nginx
+
+volumes:
+  nginx_certs:
+  nginx_www:
