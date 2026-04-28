@@ -76,6 +76,6 @@ frontend/public/build/
 # 8. Docker (Optional, if you add it later)
 # ==========================================
 *.dockerignore
-Dockerfile*
+# Dockerfile*
 .aider*
 .cssjunk
