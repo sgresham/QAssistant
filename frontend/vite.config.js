@@ -11,7 +11,5 @@ export default defineConfig({
     // port: 3000, 
     // Optional: Disable HTTPS warning if you are using a self-signed cert
     // https: false,
-  },
-  // Point to the root .env file
-  // envDir: path.resolve(__dirname, '..'),
+  }
 })
