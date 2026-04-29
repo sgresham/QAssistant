@@ -24,6 +24,19 @@ function MainChat({
     setInput('');
   };
 
+  // Helper for handling Enter key in textarea (Ctrl+Enter to send, Enter to newline)
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+      // If you want Enter to send by default, remove the shift/ctrl check above
+      // But standard UX for chat inputs is Ctrl+Enter to send.
+      // If you strictly want Enter to send and Shift+Enter for newline:
+      if (!e.ctrlKey && !e.metaKey) {
+         e.preventDefault();
+         handleSend();
+      }
+    }
+  };
+
   return (
     <div className="main-chat">
       <h1>AI Assistant (Dual-Brain)</h1>
@@ -55,13 +68,21 @@ function MainChat({
       </div>
 
       <div className="input-area">
-        <input
-          type="text"
+        <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
           placeholder="Ask a question..."
-          onKeyPress={(e) => e.key === 'Enter' && handleSend()}
           disabled={loading}
+          style={{
+            resize: 'vertical',
+            minHeight: '40px',
+            maxHeight: '150px',
+            padding: '8px',
+            width: '100%',
+            boxSizing: 'border-box',
+            fontFamily: 'inherit'
+          }}
         />
         <button onClick={handleSend} disabled={loading}>Send</button>
       </div>
