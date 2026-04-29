@@ -9,7 +9,7 @@ import './App.css';
 const isHttps = import.meta.env.VITE_HTTPS_ENABLED === 'true';
 const apiIp = import.meta.env.VITE_API_IP || 'localhost';
 const apiPort = import.meta.env.VITE_API_PORT || '3001';
-const API_URL = `${isHttps ? 'https' : 'http'}://${apiIp}:${apiPort}`;
+const API_URL = `/api`;
 
 function App() {
   const [loading, setLoading] = useState(false);
@@ -73,7 +73,7 @@ function App() {
 
   const fetchConversations = async () => {
     try {
-      const res = await axios.get(`${API_URL}/api/conversations`);
+      const res = await axios.get(`${API_URL}/conversations`);
       setConversations(res.data);
     } catch (error) {
       console.error("Failed to fetch conversations", error);
@@ -85,7 +85,7 @@ function App() {
 
   const fetchFolders = async () => {
     try {
-      const res = await axios.get(`${API_URL}/api/folders`);
+      const res = await axios.get(`${API_URL}/folders`);
       setFolders(res.data);
     } catch (error) {
       console.error("Failed to fetch folders", error);
@@ -113,7 +113,7 @@ function App() {
 
   const startNewChat = async (folderId = null) => {
     try {
-      const res = await axios.post(`${API_URL}/api/conversations`, { folderId });
+      const res = await axios.post(`${API_URL}/conversations`, { folderId });
       setActiveConversationId(res.data._id);
       setChatHistory([{ role: 'system', content: 'You are a helpful AI assistant.' }]);
       setLastModel('');
@@ -126,7 +126,7 @@ function App() {
 
   const loadConversation = async (id) => {
     try {
-      const res = await axios.get(`${API_URL}/api/conversations/${id}`);
+      const res = await axios.get(`${API_URL}/conversations/${id}`);
       setActiveConversationId(id);
       setChatHistory(res.data.messages);
       setLastModel('');
@@ -142,7 +142,7 @@ function App() {
     }
 
     try {
-      await axios.delete(`${API_URL}/api/conversations/${id}`);
+      await axios.delete(`${API_URL}/conversations/${id}`);
       if (activeConversationId === id) {
         setActiveConversationId(null);
         setChatHistory([{ role: 'system', content: 'You are a helpful AI assistant.' }]);
@@ -156,7 +156,7 @@ function App() {
 
   const renameConversation = async (id, newTitle) => {
     try {
-      await axios.put(`${API_URL}/api/conversations/${id}`, { title: newTitle });
+      await axios.put(`${API_URL}/conversations/${id}`, { title: newTitle });
       await fetchConversations();
     } catch (error) {
       console.error("Failed to rename conversation", error);
@@ -167,7 +167,7 @@ function App() {
   const createFolder = async () => {
     if (!newFolderName.trim()) return;
     try {
-      await axios.post(`${API_URL}/api/folders`, { name: newFolderName });
+      await axios.post(`${API_URL}/folders`, { name: newFolderName });
       setNewFolderName('');
       setIsAddingFolder(false);
       await fetchFolders();
@@ -182,7 +182,7 @@ function App() {
       return;
     }
     try {
-      await axios.delete(`${API_URL}/api/folders/${id}`);
+      await axios.delete(`${API_URL}/folders/${id}`);
       await fetchFolders();
     } catch (error) {
       console.error("Failed to delete folder", error);
@@ -192,7 +192,7 @@ function App() {
 
   const moveConversation = async (convId, targetFolderId) => {
     try {
-      await axios.put(`${API_URL}/api/conversations/${convId}`, { folderId: targetFolderId });
+      await axios.put(`${API_URL}/conversations/${convId}`, { folderId: targetFolderId });
       await fetchConversations();
     } catch (error) {
       console.error("Failed to move conversation", error);
@@ -210,7 +210,7 @@ function App() {
     const messagesToSend = [...chatHistory, userMessage];
 
     try {
-      const response = await fetch(`${API_URL}/api/chat`, {
+      const response = await fetch(`${API_URL}/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -273,7 +273,7 @@ function App() {
       const firstUserMsgIndex = messagesToSend.findIndex(m => m.role === 'user');
       if (firstUserMsgIndex === 0) {
         const title = message.slice(0, 30) + (message.length > 30 ? '...' : '');
-        await axios.put(`${API_URL}/api/conversations/${activeConversationId}`, { title });
+        await axios.put(`${API_URL}/conversations/${activeConversationId}`, { title });
         await fetchConversations();
       }
 

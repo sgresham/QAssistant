@@ -5,7 +5,7 @@ import axios from 'axios';
 const isHttps = import.meta.env.VITE_HTTPS_ENABLED === 'true';
 const apiIp = import.meta.env.VITE_API_IP || 'localhost';
 const apiPort = import.meta.env.VITE_API_PORT || '3001';
-const API_URL = `${isHttps ? 'https' : 'http'}://${apiIp}:${apiPort}`;
+const API_URL = `api`;
 
 function Login({ onLogin }) {
   const [isLoginMode, setIsLoginMode] = useState(true);
@@ -22,9 +22,9 @@ function Login({ onLogin }) {
     try {
       let response;
       if (isLoginMode) {
-        response = await axios.post(`${API_URL}/api/auth/login`, { email, password });
+        response = await axios.post(`${API_URL}/auth/login`, { email, password });
       } else {
-        response = await axios.post(`${API_URL}/api/auth/register`, { email, password });
+        response = await axios.post(`${API_URL}/auth/register`, { email, password });
       }
 
       const { token, user } = response.data;

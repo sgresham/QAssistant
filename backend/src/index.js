@@ -25,7 +25,7 @@ dotenv.config({ path: path.resolve(__dirname, '.env') });
 
 const app = express();
 const PORT = process.env.API_PORT || 3001;
-const API_IP = process.env.API_IP || 'localhost';
+const API_IP = process.env.API_IP || '0.0.0.0';
 const API_HTTPS_ENABLED = process.env.API_HTTPS_ENABLED === 'true';
 
 // Middleware
