@@ -13,5 +13,5 @@ export default defineConfig({
     // https: false,
   },
   // Point to the root .env file
-  envDir: path.resolve(__dirname, '..'),
+  // envDir: path.resolve(__dirname, '..'),
 })
