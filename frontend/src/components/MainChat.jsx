@@ -15,6 +15,16 @@ function MainChat({
   const [input, setInput] = React.useState('');
   const streamingMessageIndex = useRef(null);
 
+  const textareaRef = useRef(null);
+
+  // Auto-expand the textarea as the user types
+  React.useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+    }
+  }, [input]);
+
   const handleSend = async () => {
     if (!input.trim()) return;
 
@@ -31,8 +41,8 @@ function MainChat({
       // But standard UX for chat inputs is Ctrl+Enter to send.
       // If you strictly want Enter to send and Shift+Enter for newline:
       if (!e.ctrlKey && !e.metaKey) {
-         e.preventDefault();
-         handleSend();
+        e.preventDefault();
+        handleSend();
       }
     }
   };
@@ -69,15 +79,16 @@ function MainChat({
 
       <div className="input-area">
         <textarea
+          ref={textareaRef} // Add this
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Ask a question..."
           disabled={loading}
           style={{
-            resize: 'vertical',
+            resize: 'none', // Disable manual resize if using auto-expand
             minHeight: '40px',
-            maxHeight: '150px',
+            maxHeight: '150px', // Cap the height
             padding: '8px',
             width: '100%',
             boxSizing: 'border-box',
