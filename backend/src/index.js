@@ -27,7 +27,7 @@ const __dirname = path.dirname(__filename);
 // 2. Load .env from the ROOT of backend
 dotenv.config({ path: path.resolve(__dirname, '.env') });
 
-const app = createMcpExpressApp({host: '0.0.0.0'});
+const app = express();
 const PORT = process.env.API_PORT || 3001;
 const API_IP = process.env.API_IP || '0.0.0.0';
 const API_HTTPS_ENABLED = process.env.API_HTTPS_ENABLED === 'true';
