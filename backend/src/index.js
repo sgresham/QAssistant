@@ -110,7 +110,7 @@ app.post('/mcp', async (req, res) => {
   if (!transport) {
     // Create a new transport for this session
     transport = new NodeStreamableHTTPServerTransport({
-      sessionIdGenerator: () => sessionId
+      sessionIdGenerator: sessionId
     });
 
     // Connect the server to the transport
