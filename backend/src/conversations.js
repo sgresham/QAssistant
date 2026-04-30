@@ -284,19 +284,17 @@ export async function chat(req, res) {
   const { messages, modelPreference = 'auto', conversationId } = req.body;
   const userId = req.user.id;
 
-  // 1. SET HEADERS IMMEDIATELY
+  // 1. Validate BEFORE sending any headers
+  if (!messages || !Array.isArray(messages)) {
+    return res.status(400).json({ error: 'Invalid messages' });
+  }
+
+  // 2. Start the Stream
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no'); // Backup for Nginx
+  res.flushHeaders(); // Handshake with Nginx
 
-  // 2. SEND AN INITIAL KEEPALIVE CHUNK
-  // This "starts" the response so Nginx/Cloudflare stop the timeout timer.
-  res.write(': keep-alive\n\n');
-
-  if (!messages || !Array.isArray(messages)) {
-    return res.status(400).json({ error: 'Invalid request: "messages" array is required.' });
-  }
 
   const updatedMessage = generateSystemPrompt('old', messages, USER_TIMEZONE);
   // Extract latest user message
@@ -410,8 +408,13 @@ export async function chat(req, res) {
     res.end();
 
   } catch (error) {
-    console.error('Error in chat endpoint:', error);
-    res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
-    res.end();
+    console.error('CHAT ERROR:', error);
+    // Safety check: if headers are sent, we can't send a 500 status
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message });
+    } else {
+      res.write(`data: ${JSON.stringify({ error: 'Stream interrupted: ' + error.message })}\n\n`);
+      res.end();
+    }
   }
 }
