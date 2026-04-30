@@ -13,7 +13,9 @@
   "license": "ISC",
   "dependencies": {
     "@honcho-ai/sdk": "^2.1.1",
+    "@modelcontextprotocol/express": "^2.0.0-alpha.2",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/server": "^2.0.0-alpha.2",
     "axios": "^1.14.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
