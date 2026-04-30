@@ -284,6 +284,16 @@ export async function chat(req, res) {
   const { messages, modelPreference = 'auto', conversationId } = req.body;
   const userId = req.user.id;
 
+  // 1. SET HEADERS IMMEDIATELY
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // Backup for Nginx
+
+  // 2. SEND AN INITIAL KEEPALIVE CHUNK
+  // This "starts" the response so Nginx/Cloudflare stop the timeout timer.
+  res.write(': keep-alive\n\n');
+
   if (!messages || !Array.isArray(messages)) {
     return res.status(400).json({ error: 'Invalid request: "messages" array is required.' });
   }
