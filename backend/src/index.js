@@ -5,7 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import mongoose from 'mongoose';
 import { McpServer } from '@modelcontextprotocol/server';
-import { NodeStreamableHTTPServerTransport  } from '@modelcontextprotocol/node';
+import { NodeStreamableHTTPServerTransport } from '@modelcontextprotocol/node';
 
 import { authenticateToken, initializeDefaultAdmin, register, login } from './auth.js';
 import { Folder, Conversation, dbConnected } from './db.js';
@@ -60,7 +60,7 @@ app.delete('/api/conversations/:id', authenticateToken, deleteConversation);
 app.post('/api/chat', authenticateToken, chat);
 
 // ==========================================
-// MCP INTEGRATION START (Streamable HTTP)
+// MCP INTEGRATION START (Streamable HTTP - Stateful)
 // ==========================================
 
 const mcpServer = new McpServer({
@@ -91,12 +91,58 @@ mcpServer.registerTool(
   }
 );
 
+// Map to store active sessions
+const sessions = new Map();
+
 app.post('/mcp', async (req, res) => {
-    // Stateless example: create a transport per request.
-    // For stateful mode (sessions), keep a transport instance around and reuse it.
-    const transport = new NodeStreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+  // Check if a sessionId was provided in the query string
+  let sessionId = req.query.sessionId;
+
+  if (!sessionId) {
+    // If no session exists, generate a new one
+    sessionId = crypto.randomUUID();
+  }
+
+  // Check if we already have a transport for this session
+  let transport = sessions.get(sessionId);
+
+  if (!transport) {
+    // Create a new transport for this session
+    transport = new NodeStreamableHTTPServerTransport({
+      sessionIdGenerator: () => sessionId
+    });
+
+    // Connect the server to the transport
     await mcpServer.connect(transport);
+
+    // Store the transport in our map
+    sessions.set(sessionId, transport);
+
+    // Optional: Clean up session after 5 minutes of inactivity
+    setTimeout(() => {
+      if (sessions.has(sessionId)) {
+        sessions.delete(sessionId);
+        transport.close();
+      }
+    }, 5 * 60 * 1000);
+  }
+
+  // Handle the request
+  try {
     await transport.handleRequest(req, res, req.body);
+  } catch (error) {
+    console.error("Error handling MCP request:", error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        jsonrpc: "2.0",
+        error: {
+          code: -32603,
+          message: "Internal error"
+        },
+        id: null
+      });
+    }
+  }
 });
 
 // ==========================================
