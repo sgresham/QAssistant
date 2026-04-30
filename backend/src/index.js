@@ -96,8 +96,9 @@ mcpServer.registerTool(
 const sessions = new Map();
 
 app.post('/mcp', async (req, res) => {
-  // Check if a sessionId was provided in the query string
-  let sessionId = req.query.sessionId;
+  // 1. Determine Session ID
+  // Prefer header, fallback to query param
+  let sessionId = req.headers['mcp-session-id'] || req.query.sessionId;
 
   if (!sessionId) {
     // If no session exists, generate a new one
@@ -113,40 +114,51 @@ app.post('/mcp', async (req, res) => {
       sessionIdGenerator: () => sessionId
     });
 
-    // Connect the server to the transport
-    await mcpServer.connect(transport);
+    try {
+      // Connect the server to the transport. This sets up the message handler.
+      await mcpServer.connect(transport);
 
-    // Store the transport in our map
-    sessions.set(sessionId, transport);
-    console.log(`DEBUG: sessions for MCP: ${sessionId}  ${transport}`)
-
-    // Optional: Clean up session after 5 minutes of inactivity
-    setTimeout(() => {
-      if (sessions.has(sessionId)) {
-        sessions.delete(sessionId);
-        transport.close();
+      // Store in map
+      sessions.set(sessionId, transport);
+      console.log(`DEBUG: New MCP session created: ${sessionId}`);
+    } catch (err) {
+      console.error("Failed to connect MCP transport:", err);
+      if (!res.headersSent) {
+        res.status(500).json({
+          jsonrpc: "2.0",
+          error: { code: -32603, message: "Internal server error during initialization" },
+          id: null
+        });
       }
-    }, 5 * 60 * 1000);
+      return;
+    }
   }
 
-  // Handle the request
   try {
     await transport.handleRequest(req, res, req.body);
   } catch (error) {
     console.error("Error handling MCP request:", error);
     if (!res.headersSent) {
-      res.status(500).json({
-        jsonrpc: "2.0",
-        error: {
-          code: -32603,
-          message: "Internal error"
-        },
-        id: null
-      });
+      // Check if it's a specific MCP error we want to expose
+      if (error.code === -32099 || (error.message && error.message.includes("not initialized"))) {
+        // This error usually means the client didn't send 'initialize' first.
+        // The SDK might have already sent a response, or we need to send one.
+        // Note: If transport.handleRequest already sent a response, headersSent will be true.
+        res.status(400).json({
+          jsonrpc: "2.0",
+          error: { code: -32000, message: "Server not initialized. Please send 'initialize' method first." },
+          id: req.body?.id || null
+        });
+      } else {
+        res.status(500).json({
+          jsonrpc: "2.0",
+          error: { code: -32603, message: "Internal error" },
+          id: req.body?.id || null
+        });
+      }
     }
   }
 });
-
 // ==========================================
 // MCP INTEGRATION END
 // ==========================================
