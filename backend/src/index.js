@@ -5,7 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import mongoose from 'mongoose';
 import { McpServer } from '@modelcontextprotocol/server';
-import { streamableHttp } from '@modelcontextprotocol/express';
+import { NodeStreamableHTTPServerTransport  } from '@modelcontextprotocol/node';
 
 import { authenticateToken, initializeDefaultAdmin, register, login } from './auth.js';
 import { Folder, Conversation, dbConnected } from './db.js';
@@ -91,9 +91,13 @@ mcpServer.registerTool(
   }
 );
 
-// Use the Express middleware for Streamable HTTP
-// This handles both the initial POST (session creation) and subsequent requests
-app.use('/mcp', streamableHttp(mcpServer));
+app.post('/mcp', async (req, res) => {
+    // Stateless example: create a transport per request.
+    // For stateful mode (sessions), keep a transport instance around and reuse it.
+    const transport = new NodeStreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+    await server.connect(transport);
+    await transport.handleRequest(req, res, req.body);
+});
 
 // ==========================================
 // MCP INTEGRATION END
