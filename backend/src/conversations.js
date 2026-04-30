@@ -16,6 +16,7 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') });
 const LLAMA_BASE_URL = process.env.LLAMA_ENDPOINT || 'http://10.10.10.30:8888/v1';
 const LLM_TIMEOUT = parseInt(process.env.LLM_TIMEOUT, 10) || 600; // in seconds
 const USER_TIMEZONE = 'Australia/Sydney'; // Or fetch from user profile
+console.log(`DEBUG: LLM_TIMEOUT: ${LLM_TIMEOUT}`)
 
 // Define Model IDs
 const MODELS = {
@@ -312,7 +313,6 @@ export async function chat(req, res) {
   try {
     // If updating existing, load it now (ensure ownership)
     if (conversationId) {
-      console.log(`Conversation ID: ${conversationId}`)
       honchoSessionID = conversationId;
       conversationDoc = await Conversation.findOne({ _id: conversationId, userId });
       if (!conversationDoc) {
@@ -368,12 +368,9 @@ export async function chat(req, res) {
     await session.setPeerConfiguration("q", { observeOthers: true, observeMe: false });
     const context = await session.context({ summary: true, tokens: 1500, peerTarget: userId });
     const openaiMessages = context.toOpenAI(assistant);
-    // console.log(`Context from Honcho:  ${JSON.stringify(await session.context({summary: true, tokens: 1500, peerTarget: userId}))}`)
-    // console.log(`Search from Honcho: ${JSON.stringify(await session.search("birthdays and action items"))}`)
 
     // unshift() accepts multiple arguments, so use spread to unpack the array
     updatedMessage.unshift(...openaiMessages);
-    console.log(`updatedMessage: ${JSON.stringify(updatedMessage)}`)
     // Stream the response
     for await (const chunk of streamLlama(selectedModel, updatedMessage)) {
       fullResponse += chunk;
@@ -395,7 +392,6 @@ export async function chat(req, res) {
       assistant.message(fullResponse),
     ]);
     // const status = await honcho.queueStatus();
-    // console.log(`Honcho status: ${JSON.stringify(status)}`)
     console.log('Honcho Complete');
 
 
