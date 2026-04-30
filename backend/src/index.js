@@ -118,6 +118,7 @@ app.post('/mcp', async (req, res) => {
 
     // Store the transport in our map
     sessions.set(sessionId, transport);
+    console.log(`DEBUG: sessions for MCP: ${sessionId}  ${transport}`)
 
     // Optional: Clean up session after 5 minutes of inactivity
     setTimeout(() => {
