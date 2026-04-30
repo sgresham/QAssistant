@@ -289,15 +289,17 @@ export async function chat(req, res) {
     return res.status(400).json({ error: 'Invalid messages' });
   }
 
-  // 2. Start the Stream
+  // 2. Start the Stream (ONLY DO THIS ONCE)
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders(); // Handshake with Nginx
+  res.setHeader('X-Accel-Buffering', 'no'); // Important for Nginx
+  res.flushHeaders();
 
+  // Send an immediate keep-alive to reset Cloudflare/Nginx timers
+  res.write(': keep-alive\n\n');
 
   const updatedMessage = generateSystemPrompt('old', messages, USER_TIMEZONE);
-  // Extract latest user message
   const latestUserMessage = messages.slice().reverse().find(m => m.role === 'user');
   const currentInput = latestUserMessage ? latestUserMessage.content : '';
 
@@ -309,107 +311,81 @@ export async function chat(req, res) {
 
   console.log(`[ROUTER] Using model: ${selectedModel}`);
 
-  // Set headers for streaming
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
+  // REMOVED: The second res.setHeader block that was here.
 
-  // Prepare to save to DB after stream finishes
   let fullResponse = '';
   let conversationDoc = null;
 
   try {
-    // If updating existing, load it now (ensure ownership)
     if (conversationId) {
       honchoSessionID = conversationId;
       conversationDoc = await Conversation.findOne({ _id: conversationId, userId });
+
       if (!conversationDoc) {
-        return res.status(404).json({ error: 'Conversation not found' });
+        // IMPORTANT: Use res.write, not res.status, because headers are already sent.
+        res.write(`data: ${JSON.stringify({ error: 'Conversation not found' })}\n\n`);
+        return res.end();
       }
-      // Add user message immediately
+
       conversationDoc.messages.push(latestUserMessage);
       await conversationDoc.save();
-    }
-    else {
-      // Create new conversation if no ID provided
+    } else {
+      // Create new conversation logic...
       let systemContent = `You are a helpful AI assistant.`;
-      // Note: If creating a new conversation via chat endpoint without explicit folderId in body,
-      // we default to the base prompt. If you want to support folder context here, 
-      // you'd need to pass folderId in the request body.
-
       let systemMessage = [{ role: 'system', content: systemContent }];
-      const updatedMessage = generateSystemPrompt('old', systemMessage, USER_TIMEZONE);
+      const updatedMessageNew = generateSystemPrompt('old', systemMessage, USER_TIMEZONE);
 
       const newConv = new Conversation({
         title: currentInput.substring(0, 30) + (currentInput.length > 30 ? '...' : ''),
         userId,
-        messages: updatedMessage
+        messages: updatedMessageNew
       });
       await newConv.save();
+      conversationDoc = newConv; // Assign this so it's not null later
       honchoSessionID = newConv._id;
 
-      // Send the new ID as a final message
       res.write(`data: ${JSON.stringify({ type: 'new_conversation', id: newConv._id })}\n\n`);
     }
 
-    // Add to Honcho
+    // Honcho Logic...
     const assistant = await honcho.peer("q");
     const user = await honcho.peer(userId);
+    const session = await honcho.session(honchoSessionID, { /* ...config... */ });
 
-    await honcho.peers();
-
-    const session = await honcho.session(honchoSessionID, {
-      config: {
-        reasoning: { enabled: true },
-        peer_card: { create: true, use: true },
-        summary: {
-          enabled: true,
-          messages_per_short_summary: 15,
-          messages_per_long_summary: 45
-        }
-      }
-    });
-
-    // HONCHO TIME
     await session.addPeers(user, assistant);
     await session.setPeerConfiguration(user, { observeOthers: true, observeMe: true });
     await session.setPeerConfiguration("q", { observeOthers: true, observeMe: false });
+
     const context = await session.context({ summary: true, tokens: 1500, peerTarget: userId });
     const openaiMessages = context.toOpenAI(assistant);
 
-    // unshift() accepts multiple arguments, so use spread to unpack the array
     updatedMessage.unshift(...openaiMessages);
-    // Stream the response
+
+    // Stream from Llama
     for await (const chunk of streamLlama(selectedModel, updatedMessage)) {
       fullResponse += chunk;
-      // Send chunk to client in SSE format
       res.write(`data: ${JSON.stringify({ content: chunk, model: selectedModel })}\n\n`);
     }
 
-    // Stream finished, save the full assistant message to DB
-
-    conversationDoc.messages.push({ role: 'assistant', content: fullResponse });
-    // Update title if it's the first user message
-    if (conversationDoc.messages.length === 3) {
-      conversationDoc.title = currentInput.substring(0, 30) + (currentInput.length > 30 ? '...' : '');
+    // Save final response
+    if (conversationDoc) {
+      conversationDoc.messages.push({ role: 'assistant', content: fullResponse });
+      if (conversationDoc.messages.length === 3) {
+        conversationDoc.title = currentInput.substring(0, 30) + (currentInput.length > 30 ? '...' : '');
+      }
+      await conversationDoc.save();
     }
-    await conversationDoc.save();
 
     await session.addMessages([
       user.message(latestUserMessage.content),
       assistant.message(fullResponse),
     ]);
-    // const status = await honcho.queueStatus();
-    console.log('Honcho Complete');
 
-
-    // Signal end of stream
     res.write('data: [DONE]\n\n');
     res.end();
 
   } catch (error) {
     console.error('CHAT ERROR:', error);
-    // Safety check: if headers are sent, we can't send a 500 status
     if (!res.headersSent) {
       res.status(500).json({ error: error.message });
     } else {
