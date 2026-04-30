@@ -4,8 +4,8 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import mongoose from 'mongoose';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import { McpServer } from '@modelcontextprotocol/server';
+import { streamableHttp } from '@modelcontextprotocol/express';
 
 import { authenticateToken, initializeDefaultAdmin, register, login } from './auth.js';
 import { Folder, Conversation, dbConnected } from './db.js';
@@ -60,7 +60,7 @@ app.delete('/api/conversations/:id', authenticateToken, deleteConversation);
 app.post('/api/chat', authenticateToken, chat);
 
 // ==========================================
-// MCP INTEGRATION START
+// MCP INTEGRATION START (Streamable HTTP)
 // ==========================================
 
 const mcpServer = new McpServer({
@@ -68,12 +68,13 @@ const mcpServer = new McpServer({
   version: '1.0.0'
 });
 
-// Example: Register a simple tool to test MCP
-// You will move this logic to a separate file later (e.g., ./agents/index.js)
-mcpServer.tool(
+// Example: Register a simple tool
+mcpServer.registerTool(
   'get_system_status',
-  'Returns the current status of the AI system and available agents.',
-  {}, // No parameters
+  {
+    description: 'Returns the current status of the AI system.',
+    inputSchema: {}
+  },
   async () => {
     return {
       content: [
@@ -90,25 +91,9 @@ mcpServer.tool(
   }
 );
 
-// --- MCP Endpoints ---
-
-// 1. Initialize SSE Connection
-// This endpoint is called by the client to establish the connection.
-app.post('/mcp', async (req, res) => {
-  const transport = new SSEServerTransport('/mcp/messages', res);
-  await mcpServer.connect(transport);
-});
-
-// 2. Message Endpoint
-// This endpoint handles the bidirectional communication after the SSE connection is established.
-app.post('/mcp/messages', async (req, res) => {
-  // The SSEServerTransport handles the message internally, 
-  // but we need to ensure the request is processed.
-  // In some implementations, you might need to handle the message dispatch here 
-  // if using a different transport, but for SSE, the transport usually handles it.
-  // However, for robustness in Express, we can just let the transport handle it.
-  // If you encounter issues with 'message not found', ensure the transport is correctly linked.
-});
+// Use the Express middleware for Streamable HTTP
+// This handles both the initial POST (session creation) and subsequent requests
+app.use('/mcp', streamableHttp(mcpServer));
 
 // ==========================================
 // MCP INTEGRATION END
@@ -118,5 +103,5 @@ app.post('/mcp/messages', async (req, res) => {
 const protocol = API_HTTPS_ENABLED ? 'https' : 'http';
 app.listen(PORT, API_IP, () => {
   console.log(`🚀 Backend API running on ${protocol}://${API_IP}:${PORT}`);
-  console.log(`🤖 MCP SSE Endpoint: ${protocol}://${API_IP}:${PORT}/mcp`);
+  console.log(`🤖 MCP Streamable HTTP Endpoint: ${protocol}://${API_IP}:${PORT}/mcp`);
 });
