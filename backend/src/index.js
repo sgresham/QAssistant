@@ -69,13 +69,12 @@ const mcpServer = new McpServer({
   version: '1.0.0'
 });
 
-// Example: Register a simple tool
-mcpServer.registerTool(
+// FIXED: Use .tool() method which is more robust in newer SDK versions
+// Or ensure .registerTool() is called with the correct argument structure
+mcpServer.tool(
   'get_system_status',
-  {
-    description: 'Returns the current status of the AI system.',
-    inputSchema: {}
-  },
+  'Returns the current status of the AI system.',
+  {}, // Explicitly define empty input schema as JSON Schema
   async () => {
     return {
       content: [
