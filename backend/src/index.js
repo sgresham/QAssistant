@@ -74,7 +74,10 @@ mcpServer.registerTool(
   'get_system_status',
   {
     description: 'Returns the current status of the AI system.',
-    inputSchema: {}
+    inputSchema: {
+      type: 'object',
+      properties: {}
+    }
   },
   async () => {
     return {
