@@ -7,7 +7,7 @@ import mongoose from 'mongoose';
 import { createMcpExpressApp } from '@modelcontextprotocol/express';
 import { McpServer } from '@modelcontextprotocol/server';
 import { NodeStreamableHTTPServerTransport } from '@modelcontextprotocol/node';
-
+import * as z from 'zod/v4';
 import { authenticateToken, initializeDefaultAdmin, register, login } from './auth.js';
 import { Folder, Conversation, dbConnected } from './db.js';
 import { getFolders, createFolder, deleteFolder } from './folders.js';
@@ -74,10 +74,7 @@ mcpServer.registerTool(
   'get_system_status',
   {
     description: 'Returns the current status of the AI system.',
-    inputSchema: {
-      type: 'object',
-      properties: {}
-    }
+    inputSchema: z.object()
   },
   async () => {
     return {
