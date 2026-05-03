@@ -217,18 +217,25 @@ function ConversationItem({
             autoFocus
           />
         ) : (
-          <span 
-            className="conv-title" 
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsEditing(true);
-            }}
-          >
+          <span className="conv-title">
             {conv.title}
           </span>
         )}
       </div>
       <div className="conv-actions">
+        {/* NEW: Edit Button */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsEditing(true);
+          }}
+          className="edit-chat-btn"
+          title="Rename Conversation"
+        >
+          ✏️
+        </button>
+        
+        {/* Existing: Delete Button */}
         <button
           onClick={(e) => {
             e.stopPropagation();
