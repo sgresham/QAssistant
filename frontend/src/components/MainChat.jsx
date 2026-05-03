@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import '../App.css';
 import MarkdownRenderer from './MarkdownRenderer';
 
@@ -16,6 +16,8 @@ function MainChat({
   const streamingMessageIndex = useRef(null);
 
   const textareaRef = useRef(null);
+  // 1. Create a ref for the chat container
+  const scrollContainerRef = useRef(null);
 
   // Auto-expand the textarea as the user types
   React.useEffect(() => {
@@ -24,6 +26,14 @@ function MainChat({
       textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
     }
   }, [input]);
+
+  // 2. Auto-scroll effect
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      // Scroll to the bottom immediately
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+    }
+  }, [chatHistory]);
 
   const handleSend = async () => {
     if (!input.trim()) return;
@@ -60,7 +70,11 @@ function MainChat({
         </select>
       </div>
 
-      <div className="chat-box">
+      <div 
+        className="chat-box"
+        // 3. Attach the ref to the container
+        ref={scrollContainerRef}
+      >
         {chatHistory.map((msg, index) => (
           <div key={index} className={msg.role === 'user' ? 'user-message' : 'bot-message'}>
             {msg.role === 'system' ? null : (
@@ -79,16 +93,16 @@ function MainChat({
 
       <div className="input-area">
         <textarea
-          ref={textareaRef} // Add this
+          ref={textareaRef} 
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Ask a question..."
           disabled={loading}
           style={{
-            resize: 'none', // Disable manual resize if using auto-expand
+            resize: 'none', 
             minHeight: '40px',
-            maxHeight: '150px', // Cap the height
+            maxHeight: '150px', 
             padding: '8px',
             width: '100%',
             boxSizing: 'border-box',
