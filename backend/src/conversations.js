@@ -293,9 +293,9 @@ export async function chat(req, res) {
 
   try {
     if (conversationId) {
-      console.log('Conv ID exists')
       honchoSessionID = conversationId;
       conversationDoc = await Conversation.findOne({ _id: conversationId, userId }).populate('folderId', 'name systemPrompt');
+      console.log(`CovDoc: ${conversationDoc}`)
 
       if (!conversationDoc) {
         res.write(`data: ${JSON.stringify({ error: 'Conversation not found' })}\n\n`);
@@ -308,7 +308,6 @@ export async function chat(req, res) {
       // Start history with existing DB messages
       let messageHistory = [...conversationDoc.messages];
     } else {
-      console.log('Conv ID does not exist')
       // New Conversation
       let systemContent = `You are a helpful AI assistant.`;
       let systemMessage = [{ role: 'system', content: systemContent }];
