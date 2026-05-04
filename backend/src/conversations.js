@@ -303,10 +303,10 @@ export async function chat(req, res) {
 
       conversationDoc.messages.push(latestUserMessage);
       await conversationDoc.save();
-      console.log('got here')
 
       // Start history with existing DB messages
       let messageHistory = [...conversationDoc.messages];
+      console.log(messageHistory)
     } else {
       // New Conversation
       let systemContent = `You are a helpful AI assistant.`;
