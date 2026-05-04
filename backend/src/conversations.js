@@ -289,7 +289,7 @@ export async function chat(req, res) {
 
   let conversationDoc = null;
   let honchoSessionID = null;
-  let messageHistory = null;
+  let messageHistory = []; // Initialized as array to prevent slice errors
 
   try {
     if (conversationId) {
@@ -304,7 +304,7 @@ export async function chat(req, res) {
       conversationDoc.messages.push(latestUserMessage);
       await conversationDoc.save();
 
-      // Start history with existing DB messages
+      // FIXED: Removed 'let' to avoid shadowing
       messageHistory = [...conversationDoc.messages];
     } else {
       // New Conversation
@@ -323,6 +323,7 @@ export async function chat(req, res) {
 
       res.write(`data: ${JSON.stringify({ type: 'new_conversation', id: newConv._id })}\n\n`);
 
+      // FIXED: Removed 'let' to avoid shadowing
       messageHistory = [...updatedMessageNew];
     }
 
@@ -337,8 +338,10 @@ export async function chat(req, res) {
     const context = await session.context({ summary: true, tokens: 1500, peerTarget: userId });
     const openaiMessages = context.toOpenAI(assistant);
 
-    // Insert Honcho context into history (after system prompt)
-    messageHistory = [...messageHistory.slice(0, 1), ...openaiMessages, ...messageHistory.slice(1)];
+    // FIXED: Safer injection logic
+    const systemPrompt = messageHistory[0];
+    const restOfHistory = messageHistory.slice(1);
+    messageHistory = [systemPrompt, ...openaiMessages, ...restOfHistory];
 
     // --- Routing Logic ---
     let selectedModel = MODELS.THINKER;
@@ -357,13 +360,12 @@ export async function chat(req, res) {
       maxToolCalls--;
 
       try {
-        // Call Llama with Tools
         const response = await axios.post(
           `${LLAMA_BASE_URL}/chat/completions`,
           {
             model: selectedModel,
             messages: currentMessagesForLlm,
-            tools: TOOLS, // Pass tool definitions
+            tools: TOOLS,
             stream: true,
             temperature: 0.7
           },
@@ -373,86 +375,81 @@ export async function chat(req, res) {
           }
         );
 
-        // Parse Stream
         const stream = response.data;
         const decoder = new TextDecoder();
         let accumulatedContent = "";
         let toolCalls = [];
+        let isDone = false; // Flag for outer loop control
 
         for await (const chunk of stream) {
+          if (isDone) break;
           const text = decoder.decode(chunk, { stream: true });
           const lines = text.split('\n');
 
           for (const line of lines) {
             if (line.startsWith('data: ')) {
-              const dataStr = line.slice(6);
+              const dataStr = line.slice(6).trim();
               if (dataStr === '[DONE]') {
+                isDone = true;
                 break;
               }
               try {
                 const data = JSON.parse(dataStr);
-                if (data.choices && data.choices[0].delta) {
-                  const delta = data.choices[0].delta;
+                const delta = data.choices[0].delta;
 
-                  // Check for Tool Call
-                  if (delta.tool_calls) {
-                    delta.tool_calls.forEach(tc => {
-                      if (!toolCalls[tc.index]) {
-                        toolCalls[tc.index] = { id: tc.id, function: { name: tc.function.name, arguments: '' } };
-                      } else {
-                        toolCalls[tc.index].function.arguments += tc.function.arguments || '';
-                      }
-                    });
-                  }
-                  // Check for Content
-                  else if (delta.content) {
-                    accumulatedContent += delta.content;
-                    res.write(`data: ${JSON.stringify({ content: delta.content, model: selectedModel })}\n\n`);
-                  }
+                if (delta.tool_calls) {
+                  delta.tool_calls.forEach(tc => {
+                    if (!toolCalls[tc.index]) {
+                      toolCalls[tc.index] = { id: tc.id, function: { name: tc.function.name, arguments: '' } };
+                    } else {
+                      toolCalls[tc.index].function.arguments += tc.function.arguments || '';
+                    }
+                  });
+                } else if (delta.content) {
+                  accumulatedContent += delta.content;
+                  res.write(`data: ${JSON.stringify({ content: delta.content, model: selectedModel })}\n\n`);
                 }
-              } catch (e) {
-                // Ignore parse errors
-              }
+              } catch (e) { /* ignore chunk parse errors */ }
             }
           }
+        }
 
-          // Process Results
-          if (toolCalls.length > 0) {
-            console.log("Tool Calls Detected:", toolCalls);
+        // --- Process Results ---
+        if (toolCalls.length > 0) {
+          // FIXED: Push assistant message with BOTH content (if any) and tool calls
+          currentMessagesForLlm.push({
+            role: "assistant",
+            content: accumulatedContent || null,
+            tool_calls: toolCalls.map(tc => ({
+              id: tc.id,
+              type: "function",
+              function: { name: tc.function.name, arguments: tc.function.arguments }
+            }))
+          });
 
-            for (const tc of toolCalls) {
-              let toolResult = "Error processing tool.";
-              try {
-                const args = JSON.parse(tc.function.arguments);
-                console.log(`Executing tool: ${tc.function.name} with args:`, args);
-
-                toolResult = await executeTool(tc.function.name, args);
-              } catch (err) {
-                toolResult = `Error executing tool: ${err.message}`;
-              }
-
-              // Append Tool Call to History (Assistant side)
-              currentMessagesForLlm.push({
-                role: "assistant",
-                tool_calls: [{ id: tc.id, function: { name: tc.function.name, arguments: tc.function.arguments } }]
-              });
-
-              // Append Tool Result to History (Tool side)
-              currentMessagesForLlm.push({
-                role: "tool",
-                tool_call_id: tc.id,
-                content: toolResult
-              });
+          for (const tc of toolCalls) {
+            let toolResult;
+            try {
+              const args = JSON.parse(tc.function.arguments || '{}');
+              toolResult = await executeTool(tc.function.name, args);
+            } catch (err) {
+              toolResult = `Error executing tool: ${err.message}`;
             }
-            // Loop back to call LLM again with the tool result
-          } else {
-            // No tool call, this is the final response
-            finalResponse = accumulatedContent;
-            if (finalResponse) {
-              currentMessagesForLlm.push({ role: "assistant", content: finalResponse });
-            }
-            break; // Exit loop
+
+            currentMessagesForLlm.push({
+              role: "tool",
+              tool_call_id: tc.id,
+              content: toolResult
+            });
           }
+          // Continue while loop to let LLM process tool results
+        } else {
+          // No tools, final content received
+          finalResponse = accumulatedContent;
+          if (finalResponse) {
+            currentMessagesForLlm.push({ role: "assistant", content: finalResponse });
+          }
+          break; // Exit tool loop
         }
 
       } catch (error) {
@@ -473,11 +470,11 @@ export async function chat(req, res) {
     // Update Honcho Session
     if (honchoSessionID) {
       const session = await honcho.session(honchoSessionID);
-      const assistant = await honcho.peer("q");
-      const user = await honcho.peer(userId);
+      const assistantPeer = await honcho.peer("q");
+      const userPeer = await honcho.peer(userId);
       await session.addMessages([
-        user.message(currentInput),
-        assistant.message(finalResponse)
+        userPeer.message(currentInput),
+        assistantPeer.message(finalResponse)
       ]);
     }
 
