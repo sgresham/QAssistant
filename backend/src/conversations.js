@@ -295,7 +295,6 @@ export async function chat(req, res) {
     if (conversationId) {
       honchoSessionID = conversationId;
       conversationDoc = await Conversation.findOne({ _id: conversationId, userId }).populate('folderId', 'name systemPrompt');
-      console.log(`CovDoc: ${conversationDoc}`)
 
       if (!conversationDoc) {
         res.write(`data: ${JSON.stringify({ error: 'Conversation not found' })}\n\n`);
@@ -304,6 +303,7 @@ export async function chat(req, res) {
 
       conversationDoc.messages.push(latestUserMessage);
       await conversationDoc.save();
+      console.log('got here')
 
       // Start history with existing DB messages
       let messageHistory = [...conversationDoc.messages];
