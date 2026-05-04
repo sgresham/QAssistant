@@ -289,6 +289,7 @@ export async function chat(req, res) {
 
   let conversationDoc = null;
   let honchoSessionID = null;
+  let messageHistory = null;
 
   try {
     if (conversationId) {
