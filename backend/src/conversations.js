@@ -292,6 +292,7 @@ export async function chat(req, res) {
   let messageHistory = null;
 
   try {
+    console.log(`conversation ID: ${conversationId}`)
     if (conversationId) {
       honchoSessionID = conversationId;
       conversationDoc = await Conversation.findOne({ _id: conversationId, userId }).populate('folderId', 'name systemPrompt');
