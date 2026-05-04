@@ -4,6 +4,7 @@ import { Honcho } from "@honcho-ai/sdk";
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import mongoose from 'mongoose'; // <--- ADDED IMPORT
 
 // 1. Set up __dirname for ES Modules
 const __filename = fileURLToPath(import.meta.url);
@@ -24,6 +25,28 @@ const MODELS = {
   REFLEX: process.env.REFLEX_MODEL
 };
 
+// --- Tool Definitions ---
+const TOOLS = [
+  {
+    type: "function",
+    function: {
+      name: "get_infrastructure_health",
+      description: "Checks the health status of critical infrastructure components (Backend, Database).",
+      parameters: {
+        type: "object",
+        properties: {
+          component: {
+            type: "string",
+            enum: ["backend", "database", "all"],
+            description: "Which component to check. Default is 'all'."
+          }
+        },
+        required: ["component"]
+      }
+    }
+  }
+];
+
 // --- Honcho Setup ---
 const honcho = new Honcho({
   apiKey: process.env.HONCHO_API_KEY,
@@ -31,20 +54,10 @@ const honcho = new Honcho({
   workspaceId: "Qtest",
 });
 
-let honchoSessionID = null;
-
-/**
- * Updates the system message in the messages array with the current date/time.
- * If no system message exists, it creates one.
- * 
- * @param {Array} messages - The original messages array
- * @param {string} timezone - IANA timezone string (e.g., 'Australia/Sydney')
- * @returns {Array} The modified messages array with the fresh timestamp
- */
+// --- Helper: Update System Prompt with Timestamp ---
 function generateSystemPrompt(state, messages, timezone = 'Australia/Sydney') {
   const now = new Date();
 
-  // 1. Define the new timestamp string
   const dateOptions = {
     weekday: 'long',
     year: 'numeric',
@@ -66,99 +79,74 @@ function generateSystemPrompt(state, messages, timezone = 'Australia/Sydney') {
   const creationTimeStamp = `The start of the conversation commenced when date was ${dateStr} and the time was ${timeStr} (${timezone}).`;
   const timestampContent = `The current date is ${dateStr} and the time is ${timeStr} (${timezone}).`;
 
-  // Find the system message index
   const systemIndex = messages.findIndex(msg => msg.role === 'system');
 
   if (systemIndex === -1) {
-    // If no system message exists yet, create one
     messages.unshift({ role: 'system', content: creationTimeStamp });
     return messages;
   }
 
   let existingContent = messages[systemIndex].content;
 
-  // 2. CLEANUP: Remove old timestamp lines to prevent duplication
-  // We look for lines starting with "The start of..." or "The current date is..."
-  // and remove them. This ensures we only have the *latest* version.
+  // CLEANUP: Remove old timestamp lines
   const lines = existingContent.split('\n');
-  const filteredLines = lines.filter(line => {
-    // Ignore lines that are timestamp definitions
-    return !line.trim().startsWith('The current date is');
-  });
-
+  const filteredLines = lines.filter(line => !line.trim().startsWith('The current date is'));
   existingContent = filteredLines.join('\n');
 
-  // 3. UPDATE: Add the new content based on state
   if (state === 'new') {
-    // If it's a new conversation, we might want to keep the "start" line 
-    // and ensure no "current" line exists, or vice versa depending on your logic.
-    // Usually, "new" means we just set the start time.
-    // We ensure the start time is present and the current time is NOT present (unless you want both).
-    // Let's assume "new" sets the start time, and subsequent calls update the current time.
-
-    // Re-add the start time if it was filtered out (it should be, but let's be safe)
-    // if (!existingContent.includes('The start of the conversation')) {
-    //   existingContent = existingContent.trim() + '\n\n' + creationTimeStamp;
-    // }
+    // Keep start time, ensure no current time is present yet if desired, 
+    // but usually we just append current time in 'old' state.
   } else {
-    // If not new, we update the "current date" line.
-    // We remove any old "current date" line (handled by filter above) and add the new one.
+    // Update current time
     existingContent = existingContent.trim() + '\n\n' + timestampContent;
   }
 
-  // 4. Assign the cleaned and updated content back
   messages[systemIndex].content = existingContent;
-
   return messages;
 }
 
-// --- Helper: Call Llama.cpp with Streaming ---
-async function* streamLlama(model, messages, temperature = 0.7) {
-  try {
-    const response = await axios.post(
-      `${LLAMA_BASE_URL}/chat/completions`,
-      {
-        model: model,
-        messages: messages,
-        temperature: temperature,
-        stream: true // Enable streaming
-      },
-      {
-        timeout: LLM_TIMEOUT * 1000,
-        responseType: 'stream' // Important for axios to handle stream
-      }
-    );
+// --- Helper: Execute Tool Logic ---
+async function executeTool(toolName, toolArgs) {
+  if (toolName === "get_infrastructure_health") {
+    const component = toolArgs.component || "all";
+    const results = {};
 
-    // Parse the stream chunks (llama.cpp sends "data: {...}" lines)
-    const stream = response.data;
-    const decoder = new TextDecoder();
+    try {
+      // 1. Check Backend
+      results.backend = {
+        status: "online",
+        message: "Express server is responding."
+      };
 
-    for await (const chunk of stream) {
-      const text = decoder.decode(chunk, { stream: true });
-      const lines = text.split('\n');
-
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const dataStr = line.slice(6);
-          if (dataStr === '[DONE]') {
-            return; // End of stream
-          }
-          try {
-            const data = JSON.parse(dataStr);
-            if (data.choices && data.choices[0].delta?.content) {
-              yield data.choices[0].delta.content;
-            }
-          } catch (e) {
-            // Ignore malformed lines
-          }
+      // 2. Check Database
+      if (mongoose.connection.readyState !== 1) {
+        results.database = {
+          status: "disconnected",
+          message: "MongoDB connection is not active."
+        };
+      } else {
+        try {
+          await mongoose.connection.db.admin().ping();
+          results.database = {
+            status: "healthy",
+            message: "MongoDB is connected and responding to pings."
+          };
+        } catch (err) {
+          results.database = {
+            status: "error",
+            message: `MongoDB ping failed: ${err.message}`
+          };
         }
       }
+
+      let finalOutput = (component === "all") ? results : { [component]: results[component] };
+      return JSON.stringify(finalOutput, null, 2);
+
+    } catch (error) {
+      return `Error checking infrastructure: ${error.message}`;
     }
-  } catch (error) {
-    if (error.code === 'ECONNABORTED') {
-      throw new Error(`LLM request timed out after ${LLM_TIMEOUT} seconds.`);
-    }
-    throw new Error(`LLM failed: ${error.message}`);
+  } else {
+    return `Error: Unknown tool '${toolName}'`;
   }
 }
 
@@ -207,7 +195,6 @@ export async function createConversation(req, res) {
 
     let systemContent = `You are a helpful AI assistant.`;
 
-    // If a folder is specified, check for a custom system prompt
     if (folderId) {
       const folder = await Folder.findOne({ _id: folderId, userId: userId });
       if (folder && folder.systemPrompt) {
@@ -279,58 +266,47 @@ export async function deleteConversation(req, res) {
   }
 }
 
-// 6. Chat Endpoint (Streaming)
+// 6. Chat Endpoint (Streaming with Tool Support)
 export async function chat(req, res) {
-  const { messages, modelPreference = 'auto', conversationId } = req.body;
+  const { messages: incomingMessages, modelPreference = 'auto', conversationId } = req.body;
   const userId = req.user.id;
 
-  // 1. Validate BEFORE sending any headers
-  if (!messages || !Array.isArray(messages)) {
+  // 1. Validate
+  if (!incomingMessages || !Array.isArray(incomingMessages)) {
     return res.status(400).json({ error: 'Invalid messages' });
   }
 
-  // 2. Start the Stream (ONLY DO THIS ONCE)
+  // 2. Start the Stream
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no'); // Important for Nginx
+  res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders();
-
-  // Send an immediate keep-alive to reset Cloudflare/Nginx timers
   res.write(': keep-alive\n\n');
 
-  const updatedMessage = generateSystemPrompt('old', messages, USER_TIMEZONE);
-  const latestUserMessage = messages.slice().reverse().find(m => m.role === 'user');
+  const latestUserMessage = incomingMessages.slice().reverse().find(m => m.role === 'user');
   const currentInput = latestUserMessage ? latestUserMessage.content : '';
 
-  // Routing Logic
-  let selectedModel = MODELS.THINKER;
-  if (modelPreference === 'reflex') selectedModel = MODELS.REFLEX;
-  else if (modelPreference === 'thinker') selectedModel = MODELS.THINKER;
-  else if (currentInput && currentInput.length < 20) selectedModel = MODELS.REFLEX;
-
-  console.log(`[ROUTER] Using model: ${selectedModel}`);
-
-  // REMOVED: The second res.setHeader block that was here.
-
-  let fullResponse = '';
   let conversationDoc = null;
+  let honchoSessionID = null;
 
   try {
     if (conversationId) {
       honchoSessionID = conversationId;
-      conversationDoc = await Conversation.findOne({ _id: conversationId, userId });
+      conversationDoc = await Conversation.findOne({ _id: conversationId, userId }).populate('folderId', 'name systemPrompt');
 
       if (!conversationDoc) {
-        // IMPORTANT: Use res.write, not res.status, because headers are already sent.
         res.write(`data: ${JSON.stringify({ error: 'Conversation not found' })}\n\n`);
         return res.end();
       }
 
       conversationDoc.messages.push(latestUserMessage);
       await conversationDoc.save();
+
+      // Start history with existing DB messages
+      let messageHistory = [...conversationDoc.messages];
     } else {
-      // Create new conversation logic...
+      // New Conversation
       let systemContent = `You are a helpful AI assistant.`;
       let systemMessage = [{ role: 'system', content: systemContent }];
       const updatedMessageNew = generateSystemPrompt('old', systemMessage, USER_TIMEZONE);
@@ -341,17 +317,18 @@ export async function chat(req, res) {
         messages: updatedMessageNew
       });
       await newConv.save();
-      conversationDoc = newConv; // Assign this so it's not null later
+      conversationDoc = newConv;
       honchoSessionID = newConv._id;
 
       res.write(`data: ${JSON.stringify({ type: 'new_conversation', id: newConv._id })}\n\n`);
+
+      let messageHistory = [...updatedMessageNew];
     }
 
-    // Honcho Logic...
+    // --- Honcho Context Injection ---
     const assistant = await honcho.peer("q");
     const user = await honcho.peer(userId);
-    const session = await honcho.session(honchoSessionID, { /* ...config... */ });
-
+    const session = await honcho.session(honchoSessionID);
     await session.addPeers(user, assistant);
     await session.setPeerConfiguration(user, { observeOthers: true, observeMe: true });
     await session.setPeerConfiguration("q", { observeOthers: true, observeMe: false });
@@ -359,27 +336,149 @@ export async function chat(req, res) {
     const context = await session.context({ summary: true, tokens: 1500, peerTarget: userId });
     const openaiMessages = context.toOpenAI(assistant);
 
-    updatedMessage.unshift(...openaiMessages);
+    // Insert Honcho context into history (after system prompt)
+    messageHistory = [...messageHistory.slice(0, 1), ...openaiMessages, ...messageHistory.slice(1)];
 
-    // Stream from Llama
-    for await (const chunk of streamLlama(selectedModel, updatedMessage)) {
-      fullResponse += chunk;
-      res.write(`data: ${JSON.stringify({ content: chunk, model: selectedModel })}\n\n`);
+    // --- Routing Logic ---
+    let selectedModel = MODELS.THINKER;
+    if (modelPreference === 'reflex') selectedModel = MODELS.REFLEX;
+    else if (modelPreference === 'thinker') selectedModel = MODELS.THINKER;
+    else if (currentInput && currentInput.length < 20) selectedModel = MODELS.REFLEX;
+
+    console.log(`[ROUTER] Using model: ${selectedModel}`);
+
+    // --- Tool Use Loop ---
+    let finalResponse = "";
+    let maxToolCalls = 5;
+    let currentMessagesForLlm = [...messageHistory];
+
+    while (maxToolCalls > 0) {
+      maxToolCalls--;
+
+      try {
+        // Call Llama with Tools
+        const response = await axios.post(
+          `${LLAMA_BASE_URL}/chat/completions`,
+          {
+            model: selectedModel,
+            messages: currentMessagesForLlm,
+            tools: TOOLS, // Pass tool definitions
+            stream: true,
+            temperature: 0.7
+          },
+          {
+            timeout: LLM_TIMEOUT * 1000,
+            responseType: 'stream'
+          }
+        );
+
+        // Parse Stream
+        const stream = response.data;
+        const decoder = new TextDecoder();
+        let accumulatedContent = "";
+        let toolCalls = [];
+
+        for await (const chunk of stream) {
+          const text = decoder.decode(chunk, { stream: true });
+          const lines = text.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const dataStr = line.slice(6);
+              if (dataStr === '[DONE]') {
+                break;
+              }
+              try {
+                const data = JSON.parse(dataStr);
+                if (data.choices && data.choices[0].delta) {
+                  const delta = data.choices[0].delta;
+
+                  // Check for Tool Call
+                  if (delta.tool_calls) {
+                    delta.tool_calls.forEach(tc => {
+                      if (!toolCalls[tc.index]) {
+                        toolCalls[tc.index] = { id: tc.id, function: { name: tc.function.name, arguments: '' } };
+                      } else {
+                        toolCalls[tc.index].function.arguments += tc.function.arguments || '';
+                      }
+                    });
+                  }
+                  // Check for Content
+                  else if (delta.content) {
+                    accumulatedContent += delta.content;
+                    res.write(`data: ${JSON.stringify({ content: delta.content, model: selectedModel })}\n\n`);
+                  }
+                }
+              } catch (e) {
+                // Ignore parse errors
+              }
+            }
+          }
+
+          // Process Results
+          if (toolCalls.length > 0) {
+            console.log("Tool Calls Detected:", toolCalls);
+
+            for (const tc of toolCalls) {
+              let toolResult = "Error processing tool.";
+              try {
+                const args = JSON.parse(tc.function.arguments);
+                console.log(`Executing tool: ${tc.function.name} with args:`, args);
+
+                toolResult = await executeTool(tc.function.name, args);
+              } catch (err) {
+                toolResult = `Error executing tool: ${err.message}`;
+              }
+
+              // Append Tool Call to History (Assistant side)
+              currentMessagesForLlm.push({
+                role: "assistant",
+                tool_calls: [{ id: tc.id, function: { name: tc.function.name, arguments: tc.function.arguments } }]
+              });
+
+              // Append Tool Result to History (Tool side)
+              currentMessagesForLlm.push({
+                role: "tool",
+                tool_call_id: tc.id,
+                content: toolResult
+              });
+            }
+            // Loop back to call LLM again with the tool result
+          } else {
+            // No tool call, this is the final response
+            finalResponse = accumulatedContent;
+            if (finalResponse) {
+              currentMessagesForLlm.push({ role: "assistant", content: finalResponse });
+            }
+            break; // Exit loop
+          }
+        }
+
+      } catch (error) {
+        console.error("LLM Call Error:", error);
+        throw error;
+      }
     }
 
-    // Save final response
+    // --- Save Final State ---
     if (conversationDoc) {
-      conversationDoc.messages.push({ role: 'assistant', content: fullResponse });
-      if (conversationDoc.messages.length === 3) {
+      conversationDoc.messages = currentMessagesForLlm;
+      if (conversationDoc.messages.length <= 3) {
         conversationDoc.title = currentInput.substring(0, 30) + (currentInput.length > 30 ? '...' : '');
       }
       await conversationDoc.save();
     }
 
-    await session.addMessages([
-      user.message(latestUserMessage.content),
-      assistant.message(fullResponse),
-    ]);
+    // Update Honcho Session
+    if (honchoSessionID) {
+      const session = await honcho.session(honchoSessionID);
+      const assistant = await honcho.peer("q");
+      const user = await honcho.peer(userId);
+      await session.addMessages([
+        user.message(currentInput),
+        assistant.message(finalResponse)
+      ]);
+    }
 
     res.write('data: [DONE]\n\n');
     res.end();

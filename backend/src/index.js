@@ -92,6 +92,78 @@ mcpServer.registerTool(
   }
 );
 
+server.registerTool(
+  "get_infrastructure_health",
+  {
+    description: "Checks the health status of critical infrastructure components (Backend, Database).",
+    inputSchema: z.object({
+      component: z.enum(["backend", "database", "all"]).describe("Which component to check. Default is 'all'."),
+    }),
+  },
+  async (params) => {
+    const { component } = params;
+    const results = {};
+
+    try {
+      // 1. Check Backend (Express Server)
+      // We can just check if the server is still listening or run a simple internal ping
+      results.backend = {
+        status: "online",
+        message: "Express server is responding."
+      };
+
+      // 2. Check Database (MongoDB/Mongoose)
+      if (mongoose.connection.readyState !== 1) {
+        results.database = {
+          status: "disconnected",
+          message: "MongoDB connection is not active."
+        };
+      } else {
+        // Optional: Test a simple query to ensure it's not just connected but *working*
+        try {
+          await mongoose.connection.db.admin().ping();
+          results.database = {
+            status: "healthy",
+            message: "MongoDB is connected and responding to pings."
+          };
+        } catch (err) {
+          results.database = {
+            status: "error",
+            message: `MongoDB ping failed: ${err.message}`
+          };
+        }
+      }
+
+      // 3. Compile Results
+      let finalOutput;
+      if (component === "all") {
+        finalOutput = results;
+      } else {
+        finalOutput = { [component]: results[component] };
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(finalOutput, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error checking infrastructure: ${error.message}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
 // Map to store active sessions
 const sessions = new Map();
 
