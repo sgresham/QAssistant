@@ -306,7 +306,6 @@ export async function chat(req, res) {
 
       // Start history with existing DB messages
       let messageHistory = [...conversationDoc.messages];
-      console.log(messageHistory)
     } else {
       // New Conversation
       let systemContent = `You are a helpful AI assistant.`;
@@ -339,6 +338,7 @@ export async function chat(req, res) {
     const openaiMessages = context.toOpenAI(assistant);
 
     // Insert Honcho context into history (after system prompt)
+    console.log(messageHistory)
     messageHistory = [...messageHistory.slice(0, 1), ...openaiMessages, ...messageHistory.slice(1)];
 
     // --- Routing Logic ---
