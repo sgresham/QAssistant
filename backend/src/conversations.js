@@ -305,7 +305,7 @@ export async function chat(req, res) {
       await conversationDoc.save();
 
       // Start history with existing DB messages
-      let messageHistory = [...conversationDoc.messages];
+      messageHistory = [...conversationDoc.messages];
     } else {
       // New Conversation
       let systemContent = `You are a helpful AI assistant.`;
@@ -323,7 +323,7 @@ export async function chat(req, res) {
 
       res.write(`data: ${JSON.stringify({ type: 'new_conversation', id: newConv._id })}\n\n`);
 
-      let messageHistory = [...updatedMessageNew];
+      messageHistory = [...updatedMessageNew];
     }
 
     // --- Honcho Context Injection ---
@@ -338,7 +338,6 @@ export async function chat(req, res) {
     const openaiMessages = context.toOpenAI(assistant);
 
     // Insert Honcho context into history (after system prompt)
-    console.log(messageHistory)
     messageHistory = [...messageHistory.slice(0, 1), ...openaiMessages, ...messageHistory.slice(1)];
 
     // --- Routing Logic ---
