@@ -92,7 +92,7 @@ mcpServer.registerTool(
   }
 );
 
-server.registerTool(
+mcpServer.registerTool(
   "get_infrastructure_health",
   {
     description: "Checks the health status of critical infrastructure components (Backend, Database).",
