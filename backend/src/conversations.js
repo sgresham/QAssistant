@@ -292,8 +292,8 @@ export async function chat(req, res) {
   let messageHistory = null;
 
   try {
-    console.log(`conversation ID: ${conversationId}`)
     if (conversationId) {
+      console.log('Conv ID exists')
       honchoSessionID = conversationId;
       conversationDoc = await Conversation.findOne({ _id: conversationId, userId }).populate('folderId', 'name systemPrompt');
 
@@ -308,6 +308,7 @@ export async function chat(req, res) {
       // Start history with existing DB messages
       let messageHistory = [...conversationDoc.messages];
     } else {
+      console.log('Conv ID does not exist')
       // New Conversation
       let systemContent = `You are a helpful AI assistant.`;
       let systemMessage = [{ role: 'system', content: systemContent }];
@@ -325,7 +326,6 @@ export async function chat(req, res) {
       res.write(`data: ${JSON.stringify({ type: 'new_conversation', id: newConv._id })}\n\n`);
 
       let messageHistory = [...updatedMessageNew];
-      console.log(messageHistory)
     }
 
     // --- Honcho Context Injection ---
