@@ -325,6 +325,7 @@ export async function chat(req, res) {
       res.write(`data: ${JSON.stringify({ type: 'new_conversation', id: newConv._id })}\n\n`);
 
       let messageHistory = [...updatedMessageNew];
+      console.log(messageHistory)
     }
 
     // --- Honcho Context Injection ---
