@@ -417,44 +417,38 @@ export async function chat(req, res) {
         // --- Process Results ---
         // --- Inside the while loop, where you process results ---
         if (toolCalls.length > 0) {
-          // 1. Clean and validate tool calls
           const formattedToolCalls = toolCalls.map(tc => {
             let rawArgs = (tc.function.arguments || '{}').trim();
 
-            // Remove leading/trailing quotes if the model accidentally wrapped the whole JSON block
+            // Repair Qwen/Llama.cpp quirks (missing braces or extra quotes)
             if (rawArgs.startsWith('"') && rawArgs.endsWith('"') && rawArgs.length > 2) {
               rawArgs = rawArgs.substring(1, rawArgs.length - 1);
             }
+            if (rawArgs.includes(':') && !rawArgs.startsWith('{')) rawArgs = '{' + rawArgs;
+            if (rawArgs.startsWith('{') && !rawArgs.endsWith('}')) rawArgs = rawArgs + '}';
 
-            // Double check it's valid JSON
             try {
               JSON.parse(rawArgs);
             } catch (e) {
               console.error("STILL BAD JSON:", rawArgs);
-              rawArgs = '{}'; // Ultimate fallback
+              rawArgs = '{}';
             }
 
             return {
               id: tc.id || `call_${Date.now()}`,
               type: "function",
-              function: {
-                name: tc.function.name,
-                arguments: rawArgs
-              }
+              function: { name: tc.function.name, arguments: rawArgs }
             };
           });
 
-          // 2. Prepare assistant message for history
-          // IMPORTANT: Mongoose needs a string for 'content'. Use "" instead of null.
-          const assistantMessage = {
+          // Push the assistant's intent to call tools. 
+          // Note: use " " (space) if Mongoose 'required: true' is still failing on "".
+          currentMessagesForLlm.push({
             role: "assistant",
-            content: accumulatedContent.trim() || "", // Use empty string to satisfy Mongoose
+            content: accumulatedContent.trim() || " ",
             tool_calls: formattedToolCalls
-          };
+          });
 
-          currentMessagesForLlm.push(assistantMessage);
-
-          // 3. Execute tools and add 'tool' role messages
           for (const tc of formattedToolCalls) {
             let toolResult;
             try {
@@ -470,7 +464,19 @@ export async function chat(req, res) {
               content: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult)
             });
           }
-        } // No tools, final content received
+
+          // IMPORTANT: Do NOT break here. The 'while' loop will restart and 
+          // send the tool results back to the LLM for a final response.
+
+        } else {
+          // NO TOOLS CALLED: This is the final response.
+          finalResponse = accumulatedContent;
+          currentMessagesForLlm.push({
+            role: "assistant",
+            content: finalResponse || " "
+          });
+          break; // Exit the while loop
+        }
         finalResponse = accumulatedContent;
         if (finalResponse) {
           currentMessagesForLlm.push({ role: "assistant", content: finalResponse });
