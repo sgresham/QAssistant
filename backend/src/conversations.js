@@ -415,67 +415,69 @@ export async function chat(req, res) {
         }
 
         // --- Process Results ---
+        // --- Inside the while loop, where you process results ---
         if (toolCalls.length > 0) {
-          const formattedToolCalls = toolCalls
-            .filter(tc => tc.function.name) // Ensure the tool actually has a name
-            .map(tc => {
-              let args = tc.function.arguments.trim();
-              // Validate JSON before sending it BACK to the LLM
-              try {
-                JSON.parse(args);
-              } catch (e) {
-                console.warn("Detected bad JSON from model, attempting to wrap it");
-                args = "{}"; // Fallback to empty JSON to prevent the 500 error
-              }
+          // 1. Clean and validate tool calls
+          const formattedToolCalls = toolCalls.map(tc => {
+            let rawArgs = (tc.function.arguments || '{}').trim();
 
-              return {
-                id: tc.id || `call_${Date.now()}`,
-                type: "function",
-                function: {
-                  name: tc.function.name,
-                  arguments: args
-                }
-              };
-            });
-          // FIXED: Push assistant message with BOTH content (if any) and tool calls
-          currentMessagesForLlm.push({
-            role: "assistant",
-            content: accumulatedContent.trim() || null,
-            tool_calls: formattedToolCalls
+            // Remove leading/trailing quotes if the model accidentally wrapped the whole JSON block
+            if (rawArgs.startsWith('"') && rawArgs.endsWith('"') && rawArgs.length > 2) {
+              rawArgs = rawArgs.substring(1, rawArgs.length - 1);
+            }
+
+            // Double check it's valid JSON
+            try {
+              JSON.parse(rawArgs);
+            } catch (e) {
+              console.error("STILL BAD JSON:", rawArgs);
+              rawArgs = '{}'; // Ultimate fallback
+            }
+
+            return {
+              id: tc.id || `call_${Date.now()}`,
+              type: "function",
+              function: {
+                name: tc.function.name,
+                arguments: rawArgs
+              }
+            };
           });
 
-          for (const tc of toolCalls) {
+          // 2. Prepare assistant message for history
+          // IMPORTANT: Mongoose needs a string for 'content'. Use "" instead of null.
+          const assistantMessage = {
+            role: "assistant",
+            content: accumulatedContent.trim() || "", // Use empty string to satisfy Mongoose
+            tool_calls: formattedToolCalls
+          };
+
+          currentMessagesForLlm.push(assistantMessage);
+
+          // 3. Execute tools and add 'tool' role messages
+          for (const tc of formattedToolCalls) {
             let toolResult;
             try {
-              // 1. Clean the string: Remove any potential whitespace or weird artifacts 
-              // that might have been picked up during the stream
-              const cleanArgs = tc.function.arguments.trim();
-
-              // 2. Parse it locally first to ensure it's valid
-              const args = JSON.parse(cleanArgs || '{}');
-
-              // 3. Execute
+              const args = JSON.parse(tc.function.arguments);
               toolResult = await executeTool(tc.function.name, args);
             } catch (err) {
-              console.error(`Malformed JSON from LLM: "${tc.function.arguments}"`);
-              toolResult = `Error: The tool arguments were not valid JSON. Please try again.`;
+              toolResult = `Error: ${err.message}`;
             }
 
             currentMessagesForLlm.push({
               role: "tool",
               tool_call_id: tc.id,
-              content: toolResult
+              content: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult)
             });
           }
-          // Continue while loop to let LLM process tool results
-        } else {
-          // No tools, final content received
-          finalResponse = accumulatedContent;
-          if (finalResponse) {
-            currentMessagesForLlm.push({ role: "assistant", content: finalResponse });
-          }
-          break; // Exit tool loop
+        } // No tools, final content received
+        finalResponse = accumulatedContent;
+        if (finalResponse) {
+          currentMessagesForLlm.push({ role: "assistant", content: finalResponse });
         }
+        break; // Exit tool loop
+
+
 
       } catch (error) {
         console.error("LLM Call Error:", error);
