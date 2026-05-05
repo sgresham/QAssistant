@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import mongoose from 'mongoose'; // <--- ADDED IMPORT
+import { TOOLS, executeTool } from './tools.js';
 
 // 1. Set up __dirname for ES Modules
 const __filename = fileURLToPath(import.meta.url);
@@ -24,28 +25,6 @@ const MODELS = {
   THINKER: process.env.THINKER_MODEL,
   REFLEX: process.env.REFLEX_MODEL
 };
-
-// --- Tool Definitions ---
-const TOOLS = [
-  {
-    type: "function",
-    function: {
-      name: "get_infrastructure_health",
-      description: "Checks the health status of critical infrastructure components (Backend, Database).",
-      parameters: {
-        type: "object",
-        properties: {
-          component: {
-            type: "string",
-            enum: ["backend", "database", "all"],
-            description: "Which component to check. Default is 'all'."
-          }
-        },
-        required: ["component"]
-      }
-    }
-  }
-];
 
 // --- Honcho Setup ---
 const honcho = new Honcho({
@@ -103,51 +82,6 @@ function generateSystemPrompt(state, messages, timezone = 'Australia/Sydney') {
 
   messages[systemIndex].content = existingContent;
   return messages;
-}
-
-// --- Helper: Execute Tool Logic ---
-async function executeTool(toolName, toolArgs) {
-  if (toolName === "get_infrastructure_health") {
-    const component = toolArgs.component || "all";
-    const results = {};
-
-    try {
-      // 1. Check Backend
-      results.backend = {
-        status: "online",
-        message: "Express server is responding."
-      };
-
-      // 2. Check Database
-      if (mongoose.connection.readyState !== 1) {
-        results.database = {
-          status: "disconnected",
-          message: "MongoDB connection is not active."
-        };
-      } else {
-        try {
-          await mongoose.connection.db.admin().ping();
-          results.database = {
-            status: "healthy",
-            message: "MongoDB is connected and responding to pings."
-          };
-        } catch (err) {
-          results.database = {
-            status: "error",
-            message: `MongoDB ping failed: ${err.message}`
-          };
-        }
-      }
-
-      let finalOutput = (component === "all") ? results : { [component]: results[component] };
-      return JSON.stringify(finalOutput, null, 2);
-
-    } catch (error) {
-      return `Error checking infrastructure: ${error.message}`;
-    }
-  } else {
-    return `Error: Unknown tool '${toolName}'`;
-  }
 }
 
 // 1. List all conversations (with folder info, filtered by user)
