@@ -416,15 +416,32 @@ export async function chat(req, res) {
 
         // --- Process Results ---
         if (toolCalls.length > 0) {
+          const formattedToolCalls = toolCalls
+            .filter(tc => tc.function.name) // Ensure the tool actually has a name
+            .map(tc => {
+              let args = tc.function.arguments.trim();
+              // Validate JSON before sending it BACK to the LLM
+              try {
+                JSON.parse(args);
+              } catch (e) {
+                console.warn("Detected bad JSON from model, attempting to wrap it");
+                args = "{}"; // Fallback to empty JSON to prevent the 500 error
+              }
+
+              return {
+                id: tc.id || `call_${Date.now()}`,
+                type: "function",
+                function: {
+                  name: tc.function.name,
+                  arguments: args
+                }
+              };
+            });
           // FIXED: Push assistant message with BOTH content (if any) and tool calls
           currentMessagesForLlm.push({
             role: "assistant",
-            content: accumulatedContent || null,
-            tool_calls: toolCalls.map(tc => ({
-              id: tc.id,
-              type: "function",
-              function: { name: tc.function.name, arguments: tc.function.arguments }
-            }))
+            content: accumulatedContent.trim() || null,
+            tool_calls: formattedToolCalls
           });
 
           for (const tc of toolCalls) {
