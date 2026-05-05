@@ -430,10 +430,18 @@ export async function chat(req, res) {
           for (const tc of toolCalls) {
             let toolResult;
             try {
-              const args = JSON.parse(tc.function.arguments || '{}');
+              // 1. Clean the string: Remove any potential whitespace or weird artifacts 
+              // that might have been picked up during the stream
+              const cleanArgs = tc.function.arguments.trim();
+
+              // 2. Parse it locally first to ensure it's valid
+              const args = JSON.parse(cleanArgs || '{}');
+
+              // 3. Execute
               toolResult = await executeTool(tc.function.name, args);
             } catch (err) {
-              toolResult = `Error executing tool: ${err.message}`;
+              console.error(`Malformed JSON from LLM: "${tc.function.arguments}"`);
+              toolResult = `Error: The tool arguments were not valid JSON. Please try again.`;
             }
 
             currentMessagesForLlm.push({
