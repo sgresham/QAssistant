@@ -262,37 +262,32 @@ export async function chat(req, res) {
     }
 
     // --- Honcho Context Injection ---
-    const assistant = await honcho.peer("q");
-    const user = await honcho.peer(userId);
-    const session = await honcho.session(honchoSessionID);
-    await session.addPeers(user, assistant);
-    await session.setPeerConfiguration(user, { observeOthers: true, observeMe: true });
-    await session.setPeerConfiguration("q", { observeOthers: true, observeMe: false });
-
-    // --- Honcho Context Injection ---
     const context = await session.context({ summary: true, tokens: 1500, peerTarget: userId });
     const openaiMessages = context.toOpenAI(assistant);
 
-    // 1. Extract the primary system prompt
+    // 1. Extract primary system prompt
     const primarySystemPrompt = messageHistory.find(m => m.role === 'system') || { role: 'system', content: 'You are a helpful assistant.' };
 
-    // 2. Filter out system messages from Honcho/History and convert them
-    // Qwen's template will crash if it sees 'system' anywhere but index 0
-    const sanitizedContext = openaiMessages.map(m => {
-      if (m.role === 'system') {
-        return { role: 'user', content: `Context: ${m.content}` }; // Convert secondary system prompts to user-provided context
-      }
-      return m;
-    });
+    // 2. Prepare the History (exclude the system prompt for now)
+    const sanitizedHistory = messageHistory.filter(m => m.role !== 'system');
 
-    const sanitizedHistory = messageHistory
-      .filter(m => m.role !== 'system') // Remove system roles from history (we already have primarySystemPrompt)
-      .map(m => m);
+    // 3. Prepare the Honcho Context as a string (stripping 'system' roles to avoid 500s)
+    const contextText = openaiMessages
+      .map(m => `[Memory]: ${m.content}`)
+      .join("\n\n");
 
-    // 3. Reconstruct: [System] -> [Context] -> [History]
+    // 4. ATTACH CONTEXT TO LATEST USER MESSAGE (Optimizes KV Cache)
+    // We find the last user message and prepend the Honcho context to it.
+    const lastUserIndex = sanitizedHistory.findLastIndex(m => m.role === 'user');
+
+    if (lastUserIndex !== -1 && contextText) {
+      const originalContent = sanitizedHistory[lastUserIndex].content;
+      sanitizedHistory[lastUserIndex].content = `Relevant Context:\n${contextText}\n\n---\n\nUser Message: ${originalContent}`;
+    }
+
+    // 5. Final Reconstruction: [System] -> [Stable History with Context at the end]
     messageHistory = [
       primarySystemPrompt,
-      ...sanitizedContext,
       ...sanitizedHistory
     ];
 
