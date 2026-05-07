@@ -269,13 +269,32 @@ export async function chat(req, res) {
     await session.setPeerConfiguration(user, { observeOthers: true, observeMe: true });
     await session.setPeerConfiguration("q", { observeOthers: true, observeMe: false });
 
+    // --- Honcho Context Injection ---
     const context = await session.context({ summary: true, tokens: 1500, peerTarget: userId });
     const openaiMessages = context.toOpenAI(assistant);
 
-    // FIXED: Safer injection logic
-    const systemPrompt = messageHistory[0];
-    const restOfHistory = messageHistory.slice(1);
-    messageHistory = [systemPrompt, ...openaiMessages, ...restOfHistory];
+    // 1. Extract the primary system prompt
+    const primarySystemPrompt = messageHistory.find(m => m.role === 'system') || { role: 'system', content: 'You are a helpful assistant.' };
+
+    // 2. Filter out system messages from Honcho/History and convert them
+    // Qwen's template will crash if it sees 'system' anywhere but index 0
+    const sanitizedContext = openaiMessages.map(m => {
+      if (m.role === 'system') {
+        return { role: 'user', content: `Context: ${m.content}` }; // Convert secondary system prompts to user-provided context
+      }
+      return m;
+    });
+
+    const sanitizedHistory = messageHistory
+      .filter(m => m.role !== 'system') // Remove system roles from history (we already have primarySystemPrompt)
+      .map(m => m);
+
+    // 3. Reconstruct: [System] -> [Context] -> [History]
+    messageHistory = [
+      primarySystemPrompt,
+      ...sanitizedContext,
+      ...sanitizedHistory
+    ];
 
     // --- Routing Logic ---
     let selectedModel = MODELS.THINKER;
