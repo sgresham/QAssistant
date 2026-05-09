@@ -261,8 +261,12 @@ export async function chat(req, res) {
       messageHistory = [...updatedMessageNew];
     }
 
+    const session = await honcho.session(honchoSessionID);
+    const assistantPeer = await honcho.peer("q");
+    const userPeer = await honcho.peer(userId);
+
     // --- Honcho Context Injection ---
-    const context = await honcho.session.context({ summary: true, tokens: 1500, peerTarget: userId });
+    const context = await session.context({ summary: true, tokens: 1500, peerTarget: userId });
     const openaiMessages = context.toOpenAI(assistant);
 
     // 1. Extract primary system prompt
@@ -450,9 +454,6 @@ export async function chat(req, res) {
 
     // Update Honcho Session
     if (honchoSessionID) {
-      const session = await honcho.session(honchoSessionID);
-      const assistantPeer = await honcho.peer("q");
-      const userPeer = await honcho.peer(userId);
       await session.addMessages([
         userPeer.message(currentInput),
         assistantPeer.message(finalResponse)
