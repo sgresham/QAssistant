@@ -205,12 +205,11 @@ export async function chat(req, res) {
   const { messages: incomingMessages, modelPreference = 'auto', conversationId } = req.body;
   const userId = req.user.id;
 
-  // 1. Validate
   if (!incomingMessages || !Array.isArray(incomingMessages)) {
     return res.status(400).json({ error: 'Invalid messages' });
   }
 
-  // 2. Start the Stream
+  // Start the Stream
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -223,29 +222,24 @@ export async function chat(req, res) {
 
   let conversationDoc = null;
   let honchoSessionID = null;
-  let messageHistory = []; // Initialized as array to prevent slice errors
+  let messageHistory = [];
 
   try {
+    // ... [Keep your existing Conversation/Honcho setup logic exactly as is] ...
     if (conversationId) {
       honchoSessionID = conversationId;
       conversationDoc = await Conversation.findOne({ _id: conversationId, userId }).populate('folderId', 'name systemPrompt');
-
       if (!conversationDoc) {
         res.write(`data: ${JSON.stringify({ error: 'Conversation not found' })}\n\n`);
         return res.end();
       }
-
       conversationDoc.messages.push(latestUserMessage);
       await conversationDoc.save();
-
-      // FIXED: Removed 'let' to avoid shadowing
       messageHistory = [...conversationDoc.messages];
     } else {
-      // New Conversation
       let systemContent = `You are a helpful AI assistant.`;
       let systemMessage = [{ role: 'system', content: systemContent }];
       const updatedMessageNew = generateSystemPrompt('old', systemMessage, USER_TIMEZONE);
-
       const newConv = new Conversation({
         title: currentInput.substring(0, 30) + (currentInput.length > 30 ? '...' : ''),
         userId,
@@ -254,48 +248,25 @@ export async function chat(req, res) {
       await newConv.save();
       conversationDoc = newConv;
       honchoSessionID = newConv._id;
-
       res.write(`data: ${JSON.stringify({ type: 'new_conversation', id: newConv._id })}\n\n`);
-
-      // FIXED: Removed 'let' to avoid shadowing
       messageHistory = [...updatedMessageNew];
     }
 
     const session = await honcho.session(honchoSessionID);
     const assistantPeer = await honcho.peer("q");
     const userPeer = await honcho.peer(userId);
-
-    // --- Honcho Context Injection ---
     const context = await session.context({ summary: true, tokens: 1500, peerTarget: userId });
     const openaiMessages = context.toOpenAI(assistantPeer);
-
-    // 1. Extract primary system prompt
     const primarySystemPrompt = messageHistory.find(m => m.role === 'system') || { role: 'system', content: 'You are a helpful assistant.' };
-
-    // 2. Prepare the History (exclude the system prompt for now)
     const sanitizedHistory = messageHistory.filter(m => m.role !== 'system');
-
-    // 3. Prepare the Honcho Context as a string (stripping 'system' roles to avoid 500s)
-    const contextText = openaiMessages
-      .map(m => `[Memory]: ${m.content}`)
-      .join("\n\n");
-
-    // 4. ATTACH CONTEXT TO LATEST USER MESSAGE (Optimizes KV Cache)
-    // We find the last user message and prepend the Honcho context to it.
+    const contextText = openaiMessages.map(m => `[Memory]: ${m.content}`).join("\n\n");
     const lastUserIndex = sanitizedHistory.findLastIndex(m => m.role === 'user');
-
     if (lastUserIndex !== -1 && contextText) {
       const originalContent = sanitizedHistory[lastUserIndex].content;
       sanitizedHistory[lastUserIndex].content = `Relevant Context:\n${contextText}\n\n---\n\nUser Message: ${originalContent}`;
     }
+    messageHistory = [primarySystemPrompt, ...sanitizedHistory];
 
-    // 5. Final Reconstruction: [System] -> [Stable History with Context at the end]
-    messageHistory = [
-      primarySystemPrompt,
-      ...sanitizedHistory
-    ];
-
-    // --- Routing Logic ---
     let selectedModel = MODELS.THINKER;
     if (modelPreference === 'reflex') selectedModel = MODELS.REFLEX;
     else if (modelPreference === 'thinker') selectedModel = MODELS.THINKER;
@@ -331,7 +302,7 @@ export async function chat(req, res) {
         const decoder = new TextDecoder();
         let accumulatedContent = "";
         let toolCalls = [];
-        let isDone = false; // Flag for outer loop control
+        let isDone = false;
 
         for await (const chunk of stream) {
           if (isDone) break;
@@ -367,34 +338,19 @@ export async function chat(req, res) {
         }
 
         // --- Process Results ---
-        // --- Inside the while loop, where you process results ---
         if (toolCalls.length > 0) {
+          // Notify frontend that tools are running (optional, but good UX)
+          res.write(`data: ${JSON.stringify({ type: 'tool_running', message: 'Processing...' })}\n\n`);
+
           const formattedToolCalls = toolCalls.map(tc => {
             let rawArgs = (tc.function.arguments || '{}').trim();
-
-            // Repair Qwen/Llama.cpp quirks (missing braces or extra quotes)
-            if (rawArgs.startsWith('"') && rawArgs.endsWith('"') && rawArgs.length > 2) {
-              rawArgs = rawArgs.substring(1, rawArgs.length - 1);
-            }
+            if (rawArgs.startsWith('"') && rawArgs.endsWith('"') && rawArgs.length > 2) rawArgs = rawArgs.substring(1, rawArgs.length - 1);
             if (rawArgs.includes(':') && !rawArgs.startsWith('{')) rawArgs = '{' + rawArgs;
             if (rawArgs.startsWith('{') && !rawArgs.endsWith('}')) rawArgs = rawArgs + '}';
-
-            try {
-              JSON.parse(rawArgs);
-            } catch (e) {
-              console.error("STILL BAD JSON:", rawArgs);
-              rawArgs = '{}';
-            }
-
-            return {
-              id: tc.id || `call_${Date.now()}`,
-              type: "function",
-              function: { name: tc.function.name, arguments: rawArgs }
-            };
+            try { JSON.parse(rawArgs); } catch (e) { rawArgs = '{}'; }
+            return { id: tc.id || `call_${Date.now()}`, type: "function", function: { name: tc.function.name, arguments: rawArgs } };
           });
 
-          // Push the assistant's intent to call tools. 
-          // Note: use " " (space) if Mongoose 'required: true' is still failing on "".
           currentMessagesForLlm.push({
             role: "assistant",
             content: accumulatedContent.trim() || " ",
@@ -409,16 +365,15 @@ export async function chat(req, res) {
             } catch (err) {
               toolResult = `Error: ${err.message}`;
             }
-
             currentMessagesForLlm.push({
               role: "tool",
               tool_call_id: tc.id,
               content: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult)
             });
           }
-
-          // IMPORTANT: Do NOT break here. The 'while' loop will restart and 
-          // send the tool results back to the LLM for a final response.
+          
+          // CRITICAL FIX: Do NOT break here. Let the loop continue to send these results back to the LLM.
+          continue; 
 
         } else {
           // NO TOOLS CALLED: This is the final response.
@@ -427,15 +382,8 @@ export async function chat(req, res) {
             role: "assistant",
             content: finalResponse || " "
           });
-          break; // Exit the while loop
+          break; // Exit the while loop because we have a final answer
         }
-        finalResponse = accumulatedContent;
-        if (finalResponse) {
-          currentMessagesForLlm.push({ role: "assistant", content: finalResponse });
-        }
-        break; // Exit tool loop
-
-
 
       } catch (error) {
         console.error("LLM Call Error:", error);
@@ -452,7 +400,6 @@ export async function chat(req, res) {
       await conversationDoc.save();
     }
 
-    // Update Honcho Session
     if (honchoSessionID) {
       await session.addMessages([
         userPeer.message(currentInput),
