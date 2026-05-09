@@ -262,7 +262,7 @@ export async function chat(req, res) {
     }
 
     // --- Honcho Context Injection ---
-    const context = await session.context({ summary: true, tokens: 1500, peerTarget: userId });
+    const context = await honcho.session.context({ summary: true, tokens: 1500, peerTarget: userId });
     const openaiMessages = context.toOpenAI(assistant);
 
     // 1. Extract primary system prompt
