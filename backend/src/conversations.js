@@ -403,24 +403,26 @@ export async function chat(req, res) {
 
       if (isDefaultTitle && conversationDoc.messages.length > 1) {
         try {
-          // 2. Generate a title using the LLM
-          // Use a simple prompt to summarize the conversation
+          // Only send the first 2 messages (User + Assistant) for title generation
+          // This is much faster and uses less context
+          const titleContextMessages = conversationDoc.messages.slice(0, 2);
+
           const titlePrompt = [
             { role: "system", content: "You are a helpful assistant. Generate a short, concise title (max 50 characters) for the following conversation. Do not include quotes or prefixes." },
-            { role: "user", content: `Generate a title for this conversation:\n\n${conversationDoc.messages.map(m => `[${m.role}]: ${m.content}`).join('\n')}` }
+            { role: "user", content: `Generate a title for this conversation:\n\n${titleContextMessages.map(m => `[${m.role}]: ${m.content}`).join('\n')}` }
           ];
 
           const titleResponse = await axios.post(
             `${LLAMA_BASE_URL}/chat/completions`,
             {
-              model: MODELS.REFLEX, // Use the faster model for titles
+              model: MODELS.REFLEX,
               messages: titlePrompt,
-              temperature: 0.3, // Lower temperature for consistency
+              temperature: 0.3,
               max_tokens: 50
             },
             {
-              timeout: 10000, // Short timeout for title generation
-              responseType: 'json' // We don't need streaming for titles
+              timeout: 30000, 
+              responseType: 'json'
             }
           );
 
