@@ -371,9 +371,9 @@ export async function chat(req, res) {
               content: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult)
             });
           }
-          
+
           // CRITICAL FIX: Do NOT break here. Let the loop continue to send these results back to the LLM.
-          continue; 
+          continue;
 
         } else {
           // NO TOOLS CALLED: This is the final response.
@@ -394,9 +394,45 @@ export async function chat(req, res) {
     // --- Save Final State ---
     if (conversationDoc) {
       conversationDoc.messages = currentMessagesForLlm;
-      if (conversationDoc.messages.length <= 3) {
-        conversationDoc.title = currentInput.substring(0, 30) + (currentInput.length > 30 ? '...' : '');
+
+      // 1. Check if we need to generate a title
+      // We assume titles are "New Conversation" or truncated inputs initially.
+      // You can also check if the title equals the truncated input to avoid re-generating.
+      const isDefaultTitle = conversationDoc.title === 'New Conversation' ||
+        conversationDoc.title === currentInput.substring(0, 30) + (currentInput.length > 30 ? '...' : '');
+
+      if (isDefaultTitle && conversationDoc.messages.length > 1) {
+        try {
+          // 2. Generate a title using the LLM
+          // Use a simple prompt to summarize the conversation
+          const titlePrompt = [
+            { role: "system", content: "You are a helpful assistant. Generate a short, concise title (max 50 characters) for the following conversation. Do not include quotes or prefixes." },
+            { role: "user", content: `Generate a title for this conversation:\n\n${conversationDoc.messages.map(m => `[${m.role}]: ${m.content}`).join('\n')}` }
+          ];
+
+          const titleResponse = await axios.post(
+            `${LLAMA_BASE_URL}/chat/completions`,
+            {
+              model: MODELS.REFLEX, // Use the faster model for titles
+              messages: titlePrompt,
+              temperature: 0.3, // Lower temperature for consistency
+              max_tokens: 50
+            },
+            {
+              timeout: 10000, // Short timeout for title generation
+              responseType: 'json' // We don't need streaming for titles
+            }
+          );
+
+          const generatedTitle = titleResponse.data.choices[0].message.content.trim();
+          conversationDoc.title = generatedTitle;
+        } catch (titleError) {
+          console.error('Error generating title:', titleError);
+          // Fallback to truncated input if title generation fails
+          conversationDoc.title = currentInput.substring(0, 30) + (currentInput.length > 30 ? '...' : '');
+        }
       }
+
       await conversationDoc.save();
     }
 
