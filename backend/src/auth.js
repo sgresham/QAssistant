@@ -111,49 +111,52 @@ export async function login(req, res) {
 // 3. Google Login
 export async function googleLogin(req, res) {
   try {
-    const { token: googleToken } = req.body;
+    const { code } = req.body; // Received from frontend
 
-    if (!googleToken) {
-      return res.status(400).json({ error: 'Google token is required' });
+    if (!code) {
+      return res.status(400).json({ error: 'Authorization code is required' });
     }
 
-    const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-    
+    const client = new OAuth2Client(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      'postmessage' // Special redirect URI for the auth-code flow
+    );
+
+    // Exchange the code for tokens
+    const { tokens } = await client.getToken(code);
+    client.setCredentials(tokens);
+
+    // Get user info from the id_token
     const ticket = await client.verifyIdToken({
-      idToken: googleToken,
+      idToken: tokens.id_token,
       audience: process.env.GOOGLE_CLIENT_ID,
     });
 
     const payload = ticket.getPayload();
-    const { email, sub: googleId, name } = payload;
+    const { email, sub: googleId } = payload;
 
-    if (!email) {
-      return res.status(400).json({ error: 'Email not found in Google token' });
-    }
+    // --- MCP Integration Point ---
+    // tokens.refresh_token should be saved to your DB if you want 
+    // the MCP server to work while the user is offline.
+    // ------------------------------
 
-    // Find user by email or googleId
     let user = await User.findOne({ $or: [{ email }, { googleId }] });
 
     if (user) {
-      // If user exists but doesn't have googleId linked yet (e.g. migrated from password auth)
       if (!user.googleId) {
         user.googleId = googleId;
         await user.save();
       }
     } else {
-      // Create new user
-      user = new User({
-        email,
-        googleId,
-        password: null // No password for OAuth users
-      });
-      await user.save();
+      user = new User({ email, googleId, password: null });
+      await newUser.save();
     }
 
     const token = generateToken(user);
     res.json({ message: 'Google login successful', token, user: { id: user._id, email: user.email } });
   } catch (error) {
-    console.error('Error logging in with Google:', error);
+    console.error('Detailed Google Auth Error:', error);
     res.status(500).json({ error: 'Google authentication failed' });
   }
 }
