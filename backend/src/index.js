@@ -8,7 +8,7 @@ import { createMcpExpressApp } from '@modelcontextprotocol/express';
 import { McpServer } from '@modelcontextprotocol/server';
 import { NodeStreamableHTTPServerTransport } from '@modelcontextprotocol/node';
 import * as z from 'zod/v4';
-import { authenticateToken, initializeDefaultAdmin, register, login } from './auth.js';
+import { authenticateToken, initializeDefaultAdmin, register, login, googleLogin } from './auth.js';
 import { Folder, Conversation, dbConnected } from './db.js';
 import { getFolders, createFolder, deleteFolder } from './folders.js';
 import {
@@ -45,6 +45,7 @@ mongoose.connection.once('open', () => {
 // --- Auth API Endpoints ---
 app.post('/api/auth/register', register);
 app.post('/api/auth/login', login);
+app.post('/api/auth/google', googleLogin);
 
 // --- Folder API Endpoints (Protected) ---
 app.get('/api/folders', authenticateToken, getFolders);

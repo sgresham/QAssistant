@@ -1,11 +1,13 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { OAuth2Client } from 'google-auth-library';
 
 // --- User Schema ---
 const UserSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
-  password: { type: String, required: true },
+  password: { type: String }, // Made optional for OAuth users
+  googleId: { type: String, unique: true, sparse: true }, // Allow null/undefined for non-google users
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -103,6 +105,56 @@ export async function login(req, res) {
   } catch (error) {
     console.error('Error logging in:', error);
     res.status(500).json({ error: error.message });
+  }
+}
+
+// 3. Google Login
+export async function googleLogin(req, res) {
+  try {
+    const { token: googleToken } = req.body;
+
+    if (!googleToken) {
+      return res.status(400).json({ error: 'Google token is required' });
+    }
+
+    const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+    
+    const ticket = await client.verifyIdToken({
+      idToken: googleToken,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    const { email, sub: googleId, name } = payload;
+
+    if (!email) {
+      return res.status(400).json({ error: 'Email not found in Google token' });
+    }
+
+    // Find user by email or googleId
+    let user = await User.findOne({ $or: [{ email }, { googleId }] });
+
+    if (user) {
+      // If user exists but doesn't have googleId linked yet (e.g. migrated from password auth)
+      if (!user.googleId) {
+        user.googleId = googleId;
+        await user.save();
+      }
+    } else {
+      // Create new user
+      user = new User({
+        email,
+        googleId,
+        password: null // No password for OAuth users
+      });
+      await user.save();
+    }
+
+    const token = generateToken(user);
+    res.json({ message: 'Google login successful', token, user: { id: user._id, email: user.email } });
+  } catch (error) {
+    console.error('Error logging in with Google:', error);
+    res.status(500).json({ error: 'Google authentication failed' });
   }
 }
 
