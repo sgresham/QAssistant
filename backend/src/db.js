@@ -51,4 +51,16 @@ const ConversationSchema = new mongoose.Schema({
 
 export const Conversation = mongoose.model('Conversation', ConversationSchema);
 
+// --- MCP Server Schema ---
+const McpServerSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  url: { type: String, required: true },
+  headers: { type: Object, default: {} },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+
+export const McpServer = mongoose.model('McpServer', McpServerSchema);
+
 export { dbConnected };

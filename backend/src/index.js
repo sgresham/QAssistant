@@ -9,7 +9,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { NodeStreamableHTTPServerTransport } from '@modelcontextprotocol/node';
 import * as z from 'zod/v4';
 import { authenticateToken, initializeDefaultAdmin, register, login, googleLogin } from './auth.js';
-import { Folder, Conversation, dbConnected } from './db.js';
+import { Folder, Conversation, dbConnected, McpServer as McpServerModel } from './db.js';
 import { getFolders, createFolder, deleteFolder } from './folders.js';
 import {
   getConversations,
@@ -19,6 +19,13 @@ import {
   deleteConversation,
   chat
 } from './conversations.js';
+import {
+  getMcpServers,
+  getMcpServer,
+  createMcpServer,
+  updateMcpServer,
+  deleteMcpServer
+} from './mcpServers.js';
 
 // 1. Set up __dirname for ES Modules
 const __filename = fileURLToPath(import.meta.url);
@@ -61,6 +68,13 @@ app.delete('/api/conversations/:id', authenticateToken, deleteConversation);
 
 // --- Chat Endpoint (Streaming) (Protected) ---
 app.post('/api/chat', authenticateToken, chat);
+
+// --- MCP Server API Endpoints (Protected) ---
+app.get('/api/mcp-servers', authenticateToken, getMcpServers);
+app.get('/api/mcp-servers/:id', authenticateToken, getMcpServer);
+app.post('/api/mcp-servers', authenticateToken, createMcpServer);
+app.put('/api/mcp-servers/:id', authenticateToken, updateMcpServer);
+app.delete('/api/mcp-servers/:id', authenticateToken, deleteMcpServer);
 
 // ==========================================
 // MCP INTEGRATION START (Streamable HTTP - Stateful)
