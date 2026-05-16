@@ -3,6 +3,7 @@ import axios from 'axios';
 import Sidebar from './components/Sidebar';
 import MainChat from './components/MainChat';
 import Login from './components/Login';
+import Settings from './components/Settings';
 import './App.css';
 
 // Determine API URL dynamically based on environment variables
@@ -32,6 +33,9 @@ function App() {
   const [folders, setFolders] = useState([]);
   const [newFolderName, setNewFolderName] = useState('');
   const [isAddingFolder, setIsAddingFolder] = useState(false);
+
+  // View State
+  const [activeView, setActiveView] = useState('chat'); // 'chat' or 'settings'
 
   // Ref for streaming index
   const streamingRef = useRef(null);
@@ -109,6 +113,7 @@ function App() {
     setChatHistory([{ role: 'system', content: 'You are a helpful AI assistant.' }]);
     setConversations([]);
     setFolders([]);
+    setActiveView('chat');
   };
 
   const startNewChat = async (folderId = null) => {
@@ -117,6 +122,7 @@ function App() {
       setActiveConversationId(res.data._id);
       setChatHistory([{ role: 'system', content: 'You are a helpful AI assistant.' }]);
       setLastModel('');
+      setActiveView('chat');
       await fetchConversations();
     } catch (error) {
       console.error("Failed to start new chat", error);
@@ -130,6 +136,7 @@ function App() {
       setActiveConversationId(id);
       setChatHistory(res.data.messages);
       setLastModel('');
+      setActiveView('chat');
     } catch (error) {
       console.error("Failed to load conversation", error);
       if (error.response?.status === 401) handleLogout();
@@ -289,6 +296,10 @@ function App() {
     }
   };
 
+  const handleOpenSettings = () => {
+    setActiveView('settings');
+  };
+
   if (!user) {
     return <Login onLogin={handleLogin} />;
   }
@@ -315,19 +326,25 @@ function App() {
         onDeleteFolder={deleteFolder}
         user={user}
         onLogout={handleLogout}
+        onOpenSettings={handleOpenSettings}
+        activeView={activeView}
       />
-      <MainChat
-        chatHistory={chatHistory}
-        setChatHistory={setChatHistory}
-        modelMode={modelMode}
-        setModelMode={setModelMode}
-        activeConversationId={activeConversationId}
-        onSendMessage={handleSendMessage}
-        loading={loading}
-        lastModel={lastModel}
-        onLogout={handleLogout}
-        user={user}
-      />
+      {activeView === 'settings' ? (
+        <Settings user={user} token={token} />
+      ) : (
+        <MainChat
+          chatHistory={chatHistory}
+          setChatHistory={setChatHistory}
+          modelMode={modelMode}
+          setModelMode={setModelMode}
+          activeConversationId={activeConversationId}
+          onSendMessage={handleSendMessage}
+          loading={loading}
+          lastModel={lastModel}
+          onLogout={handleLogout}
+          user={user}
+        />
+      )}
     </div>
   );
 }
