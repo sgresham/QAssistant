@@ -1,4 +1,4 @@
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/node';
+import { NodeStreamableHTTPClientTransport } from '@modelcontextprotocol/node';
 import { McpServer } from './db.js';
 
 // Cache for active transports to avoid re-initializing for every request if possible
@@ -20,7 +20,7 @@ export async function fetchMcpTools(serverConfig) {
   let transport = activeTransports.get(url);
   
   if (!transport) {
-    transport = new StreamableHTTPClientTransport({
+    transport = new NodeStreamableHTTPClientTransport({
       url: new URL(url),
       requestInit: {
         headers: {
@@ -81,7 +81,7 @@ export async function executeMcpTool(serverConfig, toolName, toolArgs) {
   let transport = activeTransports.get(url);
   
   if (!transport) {
-    transport = new StreamableHTTPClientTransport({
+    transport = new NodeStreamableHTTPClientTransport({
       url: new URL(url),
       requestInit: {
         headers: {
