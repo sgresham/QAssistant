@@ -1,11 +1,11 @@
-import { NodeStreamableHTTPClientTransport } from '@modelcontextprotocol/node';
+import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { McpServer } from './db.js';
 
-// Cache for active transports to avoid re-initializing for every request if possible
+// Cache for active clients to avoid re-initializing for every request if possible
 // In a stateless API, we might need to re-init per request or use a session store.
-// For simplicity and robustness in this context, we will create transports per request
+// For simplicity and robustness in this context, we will create clients per request
 // but keep them alive for the duration of the chat turn.
-const activeTransports = new Map();
+const activeClients = new Map();
 
 /**
  * Fetches tools from a specific MCP server.
@@ -17,11 +17,10 @@ export async function fetchMcpTools(serverConfig) {
   
   if (!url) return [];
 
-  let transport = activeTransports.get(url);
+  let client = activeClients.get(url);
   
-  if (!transport) {
-    transport = new NodeStreamableHTTPClientTransport({
-      url: new URL(url),
+  if (!client) {
+    const transport = new StreamableHTTPClientTransport(new URL(url), {
       requestInit: {
         headers: {
           ...headers,
@@ -29,23 +28,24 @@ export async function fetchMcpTools(serverConfig) {
         }
       }
     });
-    activeTransports.set(url, transport);
+
+    client = new Client({ name: 'qassistant-client', version: '1.0.0' });
+    
+    try {
+      await client.connect(transport);
+      activeClients.set(url, client);
+    } catch (error) {
+      console.error(`Error connecting to MCP server ${url}:`, error.message);
+      return [];
+    }
   }
 
   try {
-    // Connect to the server
-    await transport.connect();
-    
     // List tools
-    const toolsResponse = await transport.request({
-      method: 'tools/list',
-      params: {}
-    });
-
-    const mcpTools = toolsResponse?.tools || [];
+    const { tools } = await client.listTools();
     
     // Convert MCP tool format to OpenAI function calling format
-    const openaiTools = mcpTools.map(tool => ({
+    const openaiTools = tools.map(tool => ({
       type: "function",
       function: {
         name: tool.name,
@@ -60,8 +60,8 @@ export async function fetchMcpTools(serverConfig) {
     return openaiTools;
   } catch (error) {
     console.error(`Error fetching tools from MCP server ${url}:`, error.message);
-    // Clean up failed transport
-    activeTransports.delete(url);
+    // Clean up failed client
+    activeClients.delete(url);
     return [];
   }
 }
@@ -78,11 +78,10 @@ export async function executeMcpTool(serverConfig, toolName, toolArgs) {
   
   if (!url) return `Error: No URL provided for MCP server.`;
 
-  let transport = activeTransports.get(url);
+  let client = activeClients.get(url);
   
-  if (!transport) {
-    transport = new NodeStreamableHTTPClientTransport({
-      url: new URL(url),
+  if (!client) {
+    const transport = new StreamableHTTPClientTransport(new URL(url), {
       requestInit: {
         headers: {
           ...headers,
@@ -90,22 +89,23 @@ export async function executeMcpTool(serverConfig, toolName, toolArgs) {
         }
       }
     });
-    activeTransports.set(url, transport);
+
+    client = new Client({ name: 'qassistant-client', version: '1.0.0' });
+    
+    try {
+      await client.connect(transport);
+      activeClients.set(url, client);
+    } catch (error) {
+      console.error(`Error connecting to MCP server ${url} for tool execution:`, error.message);
+      return `Error connecting to MCP server: ${error.message}`;
+    }
   }
 
   try {
-    // Ensure connection is active
-    if (!transport.isConnected) {
-      await transport.connect();
-    }
-
     // Call the tool
-    const result = await transport.request({
-      method: 'tools/call',
-      params: {
-        name: toolName,
-        arguments: toolArgs
-      }
+    const result = await client.callTool({
+      name: toolName,
+      arguments: toolArgs
     });
 
     // Format the result
@@ -116,22 +116,22 @@ export async function executeMcpTool(serverConfig, toolName, toolArgs) {
     return JSON.stringify(result);
   } catch (error) {
     console.error(`Error executing tool ${toolName} on MCP server ${url}:`, error.message);
-    activeTransports.delete(url); // Clean up on error
+    activeClients.delete(url); // Clean up on error
     return `Error executing tool: ${error.message}`;
   }
 }
 
 /**
- * Cleans up active transports.
+ * Cleans up active clients.
  * Should be called periodically or when shutting down.
  */
-export async function cleanupTransports() {
-  for (const [url, transport] of activeTransports) {
+export async function cleanupClients() {
+  for (const [url, client] of activeClients) {
     try {
-      await transport.close();
+      await client.close();
     } catch (e) {
-      console.error(`Error closing transport for ${url}:`, e);
+      console.error(`Error closing client for ${url}:`, e);
     }
   }
-  activeTransports.clear();
+  activeClients.clear();
 }
