@@ -1,4 +1,4 @@
-import { Conversation, Folder, dbConnected } from './db.js';
+import { Conversation, Folder, dbConnected, McpServer } from './db.js';
 import axios from 'axios';
 import { Honcho } from "@honcho-ai/sdk";
 import dotenv from 'dotenv';
@@ -6,6 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import mongoose from 'mongoose'; // <--- ADDED IMPORT
 import { TOOLS, executeTool } from './tools.js';
+import { fetchMcpTools, executeMcpTool } from './mcpClient.js';
 
 // 1. Set up __dirname for ES Modules
 const __filename = fileURLToPath(import.meta.url);
@@ -274,6 +275,22 @@ export async function chat(req, res) {
 
     console.log(`[ROUTER] Using model: ${selectedModel}`);
 
+    // --- Fetch MCP Tools ---
+    let mcpTools = [];
+    let mcpServers = [];
+    try {
+      mcpServers = await McpServer.find({ userId });
+      for (const server of mcpServers) {
+        const tools = await fetchMcpTools(server);
+        mcpTools = [...mcpTools, ...tools];
+      }
+    } catch (error) {
+      console.error('Error fetching MCP tools:', error);
+    }
+
+    // Combine local tools and MCP tools
+    const allTools = [...TOOLS, ...mcpTools];
+
     // --- Tool Use Loop ---
     let finalResponse = "";
     let maxToolCalls = 5;
@@ -288,7 +305,7 @@ export async function chat(req, res) {
           {
             model: selectedModel,
             messages: currentMessagesForLlm,
-            tools: TOOLS,
+            tools: allTools,
             stream: true,
             temperature: 0.7
           },
@@ -361,7 +378,32 @@ export async function chat(req, res) {
             let toolResult;
             try {
               const args = JSON.parse(tc.function.arguments);
-              toolResult = await executeTool(tc.function.name, args);
+              
+              // Check if it's an MCP tool
+              const mcpTool = mcpTools.find(t => t.function.name === tc.function.name);
+              if (mcpTool) {
+                // Find the corresponding server
+                // Note: This assumes unique tool names across servers for simplicity.
+                // If tool names can collide, we need a more robust mapping.
+                // For now, we'll search through servers to find one that has this tool.
+                let targetServer = null;
+                for (const server of mcpServers) {
+                  const serverTools = await fetchMcpTools(server);
+                  if (serverTools.some(t => t.function.name === tc.function.name)) {
+                    targetServer = server;
+                    break;
+                  }
+                }
+                
+                if (targetServer) {
+                  toolResult = await executeMcpTool(targetServer, tc.function.name, args);
+                } else {
+                  toolResult = `Error: Could not find server for tool ${tc.function.name}`;
+                }
+              } else {
+                // Local tool
+                toolResult = await executeTool(tc.function.name, args);
+              }
             } catch (err) {
               toolResult = `Error: ${err.message}`;
             }
