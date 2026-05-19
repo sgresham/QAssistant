@@ -5,7 +5,7 @@ import path from 'path'
 export default defineConfig({
   plugins: [react()],
   server: {
-    host: '0.0.0.0', 
+    host: '0.0.0.0',
     proxy: {
       // Look for any request starting with /api
       '/api': {
@@ -16,5 +16,11 @@ export default defineConfig({
         // rewrite: (path) => path.replace(/^\/api/, '') 
       }
     }
+  },
+  build: {
+    // Explicitly set the target to avoid Rolldown issues
+    target: 'es2020',
+    // Ensure proper asset handling
+    assetsInlineLimit: 4096,
   }
 })
