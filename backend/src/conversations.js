@@ -4,31 +4,23 @@ import { Honcho } from "@honcho-ai/sdk";
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import mongoose from 'mongoose'; // <--- ADDED IMPORT
 import { TOOLS, executeTool } from './tools.js';
 import { fetchMcpTools, executeMcpTool } from './mcpClient.js';
-import { generateSystemPrompt } from './generatePrompt.js'
+import { buildLlmPayload } from './generatePrompt.js';
 
-// 1. Set up __dirname for ES Modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// 2. Load .env from the ROOT directory
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
-// Configuration
 const LLAMA_BASE_URL = process.env.LLAMA_ENDPOINT || 'http://10.10.10.30:8888/v1';
-const LLM_TIMEOUT = parseInt(process.env.LLM_TIMEOUT, 10) || 600; // in seconds
-const USER_TIMEZONE = 'Australia/Sydney'; // Or fetch from user profile
-console.log(`DEBUG: LLM_TIMEOUT: ${LLM_TIMEOUT}`)
+const LLM_TIMEOUT = parseInt(process.env.LLM_TIMEOUT, 10) || 600;
+const USER_TIMEZONE = 'Australia/Sydney';
 
-// Define Model IDs
 const MODELS = {
   THINKER: process.env.THINKER_MODEL,
   REFLEX: process.env.REFLEX_MODEL
 };
 
-// --- Honcho Setup ---
 const honcho = new Honcho({
   apiKey: process.env.HONCHO_API_KEY,
   baseURL: process.env.HONCHO_API_URL,
@@ -71,31 +63,24 @@ export async function getConversation(req, res) {
 // 3. Create a new conversation (assigned to user)
 export async function createConversation(req, res) {
   try {
-    if (!dbConnected) {
-      return res.status(503).json({ error: 'Database not connected' });
-    }
+    if (!dbConnected) return res.status(503).json({ error: 'Database not connected' });
 
     const { title = 'New Conversation', folderId = null } = req?.body || {};
     const userId = req.user.id;
-
     let systemContent = `You are a helpful AI assistant.`;
 
     if (folderId) {
-      const folder = await Folder.findOne({ _id: folderId, userId: userId });
-      if (folder && folder.systemPrompt) {
-        systemContent = folder.systemPrompt;
-      }
+      const folder = await Folder.findOne({ _id: folderId, userId });
+      if (folder && folder.systemPrompt) systemContent = folder.systemPrompt;
     }
-
-    let systemMessage = [{ role: 'system', content: systemContent }];
-    const messages = generateSystemPrompt('new', systemMessage, USER_TIMEZONE);
 
     const newConversation = new Conversation({
       title,
       folderId,
       userId,
-      messages
+      messages: [{ role: 'system', content: systemContent }]
     });
+
     await newConversation.save();
     res.json(newConversation);
   } catch (error) {
@@ -160,7 +145,7 @@ export async function chat(req, res) {
     return res.status(400).json({ error: 'Invalid messages' });
   }
 
-  // Start the Stream
+  // SSE Stream Initialization
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -173,10 +158,10 @@ export async function chat(req, res) {
 
   let conversationDoc = null;
   let honchoSessionID = null;
-  let messageHistory = [];
+  let baseSystemContent = "You are a helpful AI assistant.";
 
   try {
-    // ... [Keep your existing Conversation/Honcho setup logic exactly as is] ...
+    // 1. DB Fetching & Hydration
     if (conversationId) {
       honchoSessionID = conversationId;
       conversationDoc = await Conversation.findOne({ _id: conversationId, userId }).populate('folderId', 'name systemPrompt');
@@ -184,48 +169,31 @@ export async function chat(req, res) {
         res.write(`data: ${JSON.stringify({ error: 'Conversation not found' })}\n\n`);
         return res.end();
       }
+      if (conversationDoc.folderId?.systemPrompt) {
+        baseSystemContent = conversationDoc.folderId.systemPrompt;
+      }
       conversationDoc.messages.push(latestUserMessage);
       await conversationDoc.save();
-      messageHistory = [...conversationDoc.messages];
     } else {
-      let systemContent = `You are a helpful AI assistant.`;
-      let systemMessage = [{ role: 'system', content: systemContent }];
-      const updatedMessageNew = generateSystemPrompt('old', systemMessage, USER_TIMEZONE);
       const newConv = new Conversation({
         title: currentInput.substring(0, 30) + (currentInput.length > 30 ? '...' : ''),
         userId,
-        messages: updatedMessageNew
+        messages: [{ role: 'user', content: currentInput }]
       });
       await newConv.save();
       conversationDoc = newConv;
       honchoSessionID = newConv._id;
       res.write(`data: ${JSON.stringify({ type: 'new_conversation', id: newConv._id })}\n\n`);
-      messageHistory = [...updatedMessageNew];
     }
 
+    // 2. Fetch Contextual Memories from Honcho
     const session = await honcho.session(honchoSessionID);
     const assistantPeer = await honcho.peer("q");
     const userPeer = await honcho.peer(userId);
     const context = await session.context({ summary: true, tokens: 1500, peerTarget: userId });
     const openaiMessages = context.toOpenAI(assistantPeer);
-    const primarySystemPrompt = messageHistory.find(m => m.role === 'system') || { role: 'system', content: 'You are a helpful assistant.' };
-    const sanitizedHistory = messageHistory.filter(m => m.role !== 'system');
-    const contextText = openaiMessages.map(m => `[Memory]: ${m.content}`).join("\n\n");
-    const lastUserIndex = sanitizedHistory.findLastIndex(m => m.role === 'user');
-    if (lastUserIndex !== -1 && contextText) {
-      const originalContent = sanitizedHistory[lastUserIndex].content;
-      sanitizedHistory[lastUserIndex].content = `Relevant Context:\n${contextText}\n\n---\n\nUser Message: ${originalContent}`;
-    }
-    messageHistory = [primarySystemPrompt, ...sanitizedHistory];
 
-    let selectedModel = MODELS.THINKER;
-    if (modelPreference === 'reflex') selectedModel = MODELS.REFLEX;
-    else if (modelPreference === 'thinker') selectedModel = MODELS.THINKER;
-    else if (currentInput && currentInput.length < 20) selectedModel = MODELS.REFLEX;
-
-    console.log(`[ROUTER] Using model: ${selectedModel}`);
-
-    // --- Fetch MCP Tools ---
+    // 3. Fetch Raw Toolsets from I/O layers (Keep asynchronous fetching here)
     let mcpTools = [];
     let mcpServers = [];
     try {
@@ -238,31 +206,40 @@ export async function chat(req, res) {
       console.error('Error fetching MCP tools:', error);
     }
 
-    // Combine local tools and MCP tools
-    const allTools = [...TOOLS, ...mcpTools];
+    // 4. Hand everything to generatePrompt to build a clean, sorted, cache-friendly object
+    const { messages: preparedMessages, tools: preparedTools } = buildLlmPayload({
+      systemContent: baseSystemContent,
+      messageHistory: conversationDoc.messages,
+      contextMessages: openaiMessages,
+      localTools: TOOLS, // From your local imports
+      mcpTools: mcpTools, // From your database async loop
+      timezone: USER_TIMEZONE
+    });
 
-    // --- Tool Use Loop ---
+    // 5. Model Routing
+    let selectedModel = MODELS.REFLEX;
+    // if (modelPreference === 'reflex') selectedModel = MODELS.REFLEX;
+    // else if (modelPreference === 'thinker') selectedModel = MODELS.THINKER;
+    // else if (currentInput && currentInput.length < 20) selectedModel = MODELS.REFLEX;
+
+    // 6. Tool-Execution Execution Loop
     let finalResponse = "";
     let maxToolCalls = 5;
-    let currentMessagesForLlm = [...messageHistory];
+    let currentMessagesForLlm = [...preparedMessages];
 
     while (maxToolCalls > 0) {
       maxToolCalls--;
-
       try {
         const response = await axios.post(
           `${LLAMA_BASE_URL}/chat/completions`,
           {
             model: selectedModel,
             messages: currentMessagesForLlm,
-            tools: allTools,
+            tools: preparedTools,
             stream: true,
             temperature: 0.7
           },
-          {
-            timeout: LLM_TIMEOUT * 1000,
-            responseType: 'stream'
-          }
+          { timeout: LLM_TIMEOUT * 1000, responseType: 'stream' }
         );
 
         const stream = response.data;
@@ -279,10 +256,7 @@ export async function chat(req, res) {
           for (const line of lines) {
             if (line.startsWith('data: ')) {
               const dataStr = line.slice(6).trim();
-              if (dataStr === '[DONE]') {
-                isDone = true;
-                break;
-              }
+              if (dataStr === '[DONE]') { isDone = true; break; }
               try {
                 const data = JSON.parse(dataStr);
                 const delta = data.choices[0].delta;
@@ -299,21 +273,16 @@ export async function chat(req, res) {
                   accumulatedContent += delta.content;
                   res.write(`data: ${JSON.stringify({ content: delta.content, model: selectedModel })}\n\n`);
                 }
-              } catch (e) { /* ignore chunk parse errors */ }
+              } catch (e) { }
             }
           }
         }
 
-        // --- Process Results ---
         if (toolCalls.length > 0) {
-          // Notify frontend that tools are running (optional, but good UX)
           res.write(`data: ${JSON.stringify({ type: 'tool_running', message: 'Processing...' })}\n\n`);
-
           const formattedToolCalls = toolCalls.map(tc => {
             let rawArgs = (tc.function.arguments || '{}').trim();
-            if (rawArgs.startsWith('"') && rawArgs.endsWith('"') && rawArgs.length > 2) rawArgs = rawArgs.substring(1, rawArgs.length - 1);
-            if (rawArgs.includes(':') && !rawArgs.startsWith('{')) rawArgs = '{' + rawArgs;
-            if (rawArgs.startsWith('{') && !rawArgs.endsWith('}')) rawArgs = rawArgs + '}';
+            if (rawArgs.startsWith('"') && rawArgs.endsWith('"')) rawArgs = rawArgs.substring(1, rawArgs.length - 1);
             try { JSON.parse(rawArgs); } catch (e) { rawArgs = '{}'; }
             return { id: tc.id || `call_${Date.now()}`, type: "function", function: { name: tc.function.name, arguments: rawArgs } };
           });
@@ -328,14 +297,9 @@ export async function chat(req, res) {
             let toolResult;
             try {
               const args = JSON.parse(tc.function.arguments);
-              
-              // Check if it's an MCP tool
               const mcpTool = mcpTools.find(t => t.function.name === tc.function.name);
+
               if (mcpTool) {
-                // Find the corresponding server
-                // Note: This assumes unique tool names across servers for simplicity.
-                // If tool names can collide, we need a more robust mapping.
-                // For now, we'll search through servers to find one that has this tool.
                 let targetServer = null;
                 for (const server of mcpServers) {
                   const serverTools = await fetchMcpTools(server);
@@ -344,97 +308,64 @@ export async function chat(req, res) {
                     break;
                   }
                 }
-                
-                if (targetServer) {
-                  toolResult = await executeMcpTool(targetServer, tc.function.name, args);
-                } else {
-                  toolResult = `Error: Could not find server for tool ${tc.function.name}`;
-                }
+                toolResult = targetServer ? await executeMcpTool(targetServer, tc.function.name, args) : `Error: Server not found`;
               } else {
-                // Local tool
                 toolResult = await executeTool(tc.function.name, args);
               }
             } catch (err) {
               toolResult = `Error: ${err.message}`;
             }
+
             currentMessagesForLlm.push({
               role: "tool",
               tool_call_id: tc.id,
               content: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult)
             });
           }
-
-          // CRITICAL FIX: Do NOT break here. Let the loop continue to send these results back to the LLM.
           continue;
-
         } else {
-          // NO TOOLS CALLED: This is the final response.
           finalResponse = accumulatedContent;
-          currentMessagesForLlm.push({
-            role: "assistant",
-            content: finalResponse || " "
-          });
-          break; // Exit the while loop because we have a final answer
+          currentMessagesForLlm.push({ role: "assistant", content: finalResponse || " " });
+          break;
         }
-
       } catch (error) {
         console.error("LLM Call Error:", error);
         throw error;
       }
     }
 
-    // --- Save Final State ---
+    // 7. Post-Response State Sync
     if (conversationDoc) {
       conversationDoc.messages = currentMessagesForLlm;
 
-      // 1. Check if we need to generate a title
-      // We assume titles are "New Conversation" or truncated inputs initially.
-      // You can also check if the title equals the truncated input to avoid re-generating.
       const isDefaultTitle = conversationDoc.title === 'New Conversation' ||
         conversationDoc.title === currentInput.substring(0, 30) + (currentInput.length > 30 ? '...' : '');
 
       if (isDefaultTitle && conversationDoc.messages.length > 1) {
         try {
-          // Only send the first 2 messages (User + Assistant) for title generation
-          // This is much faster and uses less context
           const titleContextMessages = conversationDoc.messages.slice(0, 2);
-
           const titlePrompt = [
-            { role: "system", content: "You are a helpful assistant. Generate a short, concise title (max 50 characters) for the following conversation. Do not include quotes or prefixes." },
-            { role: "user", content: `Generate a title for this conversation:\n\n${titleContextMessages.map(m => `[${m.role}]: ${m.content}`).join('\n')}` }
+            { role: "system", content: "You are a helpful assistant. Generate a short title (max 50 chars). No quotes." },
+            { role: "user", content: `Generate title:\n\n${titleContextMessages.map(m => `[${m.role}]: ${m.content}`).join('\n')}` }
           ];
 
-          const titleResponse = await axios.post(
-            `${LLAMA_BASE_URL}/chat/completions`,
-            {
-              model: MODELS.REFLEX,
-              messages: titlePrompt,
-              temperature: 0.3,
-              max_tokens: 50
-            },
-            {
-              timeout: 30000, 
-              responseType: 'json'
-            }
-          );
+          const titleResponse = await axios.post(`${LLAMA_BASE_URL}/chat/completions`, {
+            model: MODELS.REFLEX,
+            messages: titlePrompt,
+            temperature: 0.3,
+            max_tokens: 50
+          }, { timeout: 30000 });
 
-          const generatedTitle = titleResponse.data.choices[0].message.content.trim();
-          conversationDoc.title = generatedTitle;
-        } catch (titleError) {
-          console.error('Error generating title:', titleError);
-          // Fallback to truncated input if title generation fails
-          conversationDoc.title = currentInput.substring(0, 30) + (currentInput.length > 30 ? '...' : '');
+          conversationDoc.title = titleResponse.data.choices[0].message.content.trim();
+        } catch (e) {
+          console.error('Title generation fallback invoked.');
         }
       }
-
       await conversationDoc.save();
     }
 
     if (honchoSessionID) {
-      await session.addMessages([
-        userPeer.message(currentInput),
-        assistantPeer.message(finalResponse)
-      ]);
+      await session.addMessages([userPeer.message(currentInput), assistantPeer.message(finalResponse)]);
     }
 
     res.write('data: [DONE]\n\n');
