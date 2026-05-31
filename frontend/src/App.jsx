@@ -32,7 +32,10 @@ function App() {
   // Folder State
   const [folders, setFolders] = useState([]);
   const [newFolderName, setNewFolderName] = useState('');
+  const [newFolderPrompt, setNewFolderPrompt] = useState('');
   const [isAddingFolder, setIsAddingFolder] = useState(false);
+  const [editingFolderId, setEditingFolderId] = useState(null);
+  const [editingPromptText, setEditingPromptText] = useState('');
 
   // View State
   const [activeView, setActiveView] = useState('chat'); // 'chat' or 'settings'
@@ -120,7 +123,8 @@ function App() {
     try {
       const res = await axios.post(`${API_URL}/conversations`, { folderId });
       setActiveConversationId(res.data._id);
-      setChatHistory([{ role: 'system', content: 'You are a helpful AI assistant.' }]);
+      const systemMsg = res.data.messages?.find(m => m.role === 'system');
+      setChatHistory(systemMsg ? [{ role: 'system', content: systemMsg.content }] : [{ role: 'system', content: 'You are a helpful AI assistant.' }]);
       setLastModel('');
       setActiveView('chat');
       await fetchConversations();
@@ -174,8 +178,9 @@ function App() {
   const createFolder = async () => {
     if (!newFolderName.trim()) return;
     try {
-      await axios.post(`${API_URL}/folders`, { name: newFolderName });
+      await axios.post(`${API_URL}/folders`, { name: newFolderName, systemPrompt: newFolderPrompt });
       setNewFolderName('');
+      setNewFolderPrompt('');
       setIsAddingFolder(false);
       await fetchFolders();
     } catch (error) {
@@ -193,6 +198,28 @@ function App() {
       await fetchFolders();
     } catch (error) {
       console.error("Failed to delete folder", error);
+      if (error.response?.status === 401) handleLogout();
+    }
+  };
+
+  const startEditingFolderPrompt = (folder) => {
+    setEditingFolderId(folder._id);
+    setEditingPromptText(folder.systemPrompt || '');
+  };
+
+  const cancelEditingFolderPrompt = () => {
+    setEditingFolderId(null);
+    setEditingPromptText('');
+  };
+
+  const saveFolderSystemPrompt = async (folderId) => {
+    try {
+      await axios.put(`${API_URL}/folders/${folderId}`, { systemPrompt: editingPromptText });
+      setEditingFolderId(null);
+      setEditingPromptText('');
+      await fetchFolders();
+    } catch (error) {
+      console.error("Failed to update folder system prompt", error);
       if (error.response?.status === 401) handleLogout();
     }
   };
@@ -321,9 +348,17 @@ function App() {
         isAddingFolder={isAddingFolder}
         newFolderName={newFolderName}
         onNewFolderNameChange={setNewFolderName}
+        newFolderPrompt={newFolderPrompt}
+        onNewFolderPromptChange={setNewFolderPrompt}
         onCreateFolder={createFolder}
         onCancelFolder={() => setIsAddingFolder(false)}
         onDeleteFolder={deleteFolder}
+        editingFolderId={editingFolderId}
+        editingPromptText={editingPromptText}
+        onEditingPromptTextChange={setEditingPromptText}
+        onStartEditingFolderPrompt={startEditingFolderPrompt}
+        onCancelEditingFolderPrompt={cancelEditingFolderPrompt}
+        onSaveFolderSystemPrompt={saveFolderSystemPrompt}
         user={user}
         onLogout={handleLogout}
         onOpenSettings={handleOpenSettings}

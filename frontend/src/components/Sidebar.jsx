@@ -16,10 +16,18 @@ function Sidebar({
   isAddingFolder,
   newFolderName,
   onNewFolderNameChange,
+  newFolderPrompt,
+  onNewFolderPromptChange,
   onCreateFolder,
   onCancelAddFolder,
   onDeleteFolder,
   onMoveConversation,
+  editingFolderId,
+  editingPromptText,
+  onEditingPromptTextChange,
+  onStartEditingFolderPrompt,
+  onCancelEditingFolderPrompt,
+  onSaveFolderSystemPrompt,
   user,
   onLogout,
   onOpenSettings,
@@ -84,6 +92,13 @@ function Sidebar({
                   onChange={(e) => onNewFolderNameChange(e.target.value)}
                   autoFocus
                 />
+                <textarea
+                  placeholder="System prompt (optional)"
+                  value={newFolderPrompt}
+                  onChange={(e) => onNewFolderPromptChange(e.target.value)}
+                  className="folder-prompt-textarea"
+                  rows={3}
+                />
                 <div className="folder-form-actions">
                   <button onClick={onCreateFolder}>Create</button>
                   <button onClick={onCancelAddFolder}>Cancel</button>
@@ -129,12 +144,28 @@ function Sidebar({
                 onDrop={(e) => handleDrop(e, folder._id)}
               >
                 <div className="folder-header">
-                  <span className="folder-name">📂 {folder.name}</span>
+                  <span className={`folder-name${folder.systemPrompt ? ' has-prompt' : ''}`}>📂 {folder.name}</span>
                   <div className="folder-actions">
                     <button onClick={() => handleNewChatInFolder(folder._id)} className="new-in-folder-btn">+ New</button>
+                    <button onClick={() => onStartEditingFolderPrompt(folder)} className="edit-folder-btn" title="Edit system prompt">⚙️</button>
                     <button onClick={() => onDeleteFolder(folder._id)} className="delete-folder-btn">🗑</button>
                   </div>
                 </div>
+                {editingFolderId === folder._id && (
+                  <div className="folder-prompt-editor">
+                    <textarea
+                      placeholder="Enter system prompt..."
+                      value={editingPromptText}
+                      onChange={(e) => onEditingPromptTextChange(e.target.value)}
+                      className="folder-prompt-textarea-edit"
+                      rows={4}
+                    />
+                    <div className="folder-form-actions">
+                      <button onClick={() => onSaveFolderSystemPrompt(folder._id)}>Save</button>
+                      <button onClick={onCancelEditingFolderPrompt}>Cancel</button>
+                    </div>
+                  </div>
+                )}
                 <div className="conv-list">
                   {groupedConversations[folder._id]?.map((conv) => (
                     <ConversationItem

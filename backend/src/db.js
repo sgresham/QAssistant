@@ -29,6 +29,7 @@ mongoose.connect(`${MONGODB_URI}/${MONGODB_DB}`)
 const FolderSchema = new mongoose.Schema({
   name: { type: String, required: true },
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  systemPrompt: { type: String, default: '' },
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -46,6 +47,8 @@ const ConversationSchema = new mongoose.Schema({
   }],
   folderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Folder', default: null },
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  systemPrompt: { type: String, default: '' },
+  systemPromptHash: { type: String, default: '' },
   createdAt: { type: Date, default: Date.now }
 });
 

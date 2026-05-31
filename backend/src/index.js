@@ -10,7 +10,7 @@ import { NodeStreamableHTTPServerTransport } from '@modelcontextprotocol/node';
 import * as z from 'zod/v4';
 import { authenticateToken, initializeDefaultAdmin, register, login, googleLogin } from './auth.js';
 import { Folder, Conversation, dbConnected, McpServer as McpServerModel } from './db.js';
-import { getFolders, createFolder, deleteFolder } from './folders.js';
+import { getFolders, createFolder, updateFolder, deleteFolder } from './folders.js';
 import {
   getConversations,
   getConversation,
@@ -57,6 +57,7 @@ app.post('/api/auth/google', googleLogin);
 // --- Folder API Endpoints (Protected) ---
 app.get('/api/folders', authenticateToken, getFolders);
 app.post('/api/folders', authenticateToken, createFolder);
+app.put('/api/folders/:id', authenticateToken, updateFolder);
 app.delete('/api/folders/:id', authenticateToken, deleteFolder);
 
 // --- Conversation API Endpoints (Protected) ---

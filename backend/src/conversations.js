@@ -4,6 +4,7 @@ import { Honcho } from "@honcho-ai/sdk";
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import crypto from 'crypto';
 import { TOOLS, executeTool } from './tools.js';
 import { fetchMcpTools, executeMcpTool } from './mcpClient.js';
 import { buildLlmPayload } from './generatePrompt.js';
@@ -20,6 +21,12 @@ const MODELS = {
   THINKER: process.env.THINKER_MODEL,
   REFLEX: process.env.REFLEX_MODEL
 };
+
+const DEFAULT_SYSTEM_PROMPT = 'You are a helpful AI assistant.';
+
+function hashPrompt(prompt) {
+  return crypto.createHash('sha256').update(prompt || '').digest('hex');
+}
 
 const honcho = new Honcho({
   apiKey: process.env.HONCHO_API_KEY,
@@ -67,7 +74,7 @@ export async function createConversation(req, res) {
 
     const { title = 'New Conversation', folderId = null } = req?.body || {};
     const userId = req.user.id;
-    let systemContent = `You are a helpful AI assistant.`;
+    let systemContent = DEFAULT_SYSTEM_PROMPT;
 
     if (folderId) {
       const folder = await Folder.findOne({ _id: folderId, userId });
@@ -78,6 +85,8 @@ export async function createConversation(req, res) {
       title,
       folderId,
       userId,
+      systemPrompt: systemContent,
+      systemPromptHash: hashPrompt(systemContent),
       messages: [{ role: 'system', content: systemContent }]
     });
 
@@ -113,6 +122,17 @@ export async function updateConversation(req, res) {
     ).populate('folderId', 'name systemPrompt');
 
     if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+
+    // If folder changed, update system prompt snapshot
+    if (folderId !== undefined && conversation.folderId) {
+      const folderPrompt = conversation.folderId.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+      const folderPromptHash = hashPrompt(folderPrompt);
+      if (conversation.systemPromptHash !== folderPromptHash) {
+        conversation.systemPrompt = folderPrompt;
+        conversation.systemPromptHash = folderPromptHash;
+        await conversation.save();
+      }
+    }
     res.json(conversation);
   } catch (error) {
     console.error('Error updating conversation:', error);
@@ -158,7 +178,7 @@ export async function chat(req, res) {
 
   let conversationDoc = null;
   let honchoSessionID = null;
-  let baseSystemContent = "You are a helpful AI assistant.";
+  let baseSystemContent = DEFAULT_SYSTEM_PROMPT;
 
   try {
     // 1. DB Fetching & Hydration
@@ -169,15 +189,25 @@ export async function chat(req, res) {
         res.write(`data: ${JSON.stringify({ error: 'Conversation not found' })}\n\n`);
         return res.end();
       }
-      if (conversationDoc.folderId?.systemPrompt) {
-        baseSystemContent = conversationDoc.folderId.systemPrompt;
+
+      // Resolve system prompt from snapshot; update if folder prompt changed
+      const folderPrompt = conversationDoc.folderId?.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+      const folderPromptHash = hashPrompt(folderPrompt);
+      if (conversationDoc.systemPromptHash !== folderPromptHash) {
+        conversationDoc.systemPrompt = folderPrompt;
+        conversationDoc.systemPromptHash = folderPromptHash;
+        await conversationDoc.save();
       }
+      baseSystemContent = conversationDoc.systemPrompt;
+
       conversationDoc.messages.push(latestUserMessage);
       await conversationDoc.save();
     } else {
       const newConv = new Conversation({
         title: currentInput.substring(0, 30) + (currentInput.length > 30 ? '...' : ''),
         userId,
+        systemPrompt: DEFAULT_SYSTEM_PROMPT,
+        systemPromptHash: hashPrompt(DEFAULT_SYSTEM_PROMPT),
         messages: [{ role: 'user', content: currentInput }]
       });
       await newConv.save();
