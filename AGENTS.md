@@ -63,17 +63,20 @@ Monorepo with two packages:
 
 ## Environment Variables
 
-Required in root `.env`:
-- `MONGODB_URI` — MongoDB connection string
-- `JWT_SECRET` — JWT signing secret
-- `LLAMA_ENDPOINT` — LLM API base URL (default `http://10.10.10.30:8888/v1`)
-- `THINKER_MODEL`, `REFLEX_MODEL` — model names for routing
-- `HONCHO_API_KEY`, `HONCHO_API_URL` — Honcho memory SDK
-- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` — Google OAuth
-- `VITE_GOOGLE_CLIENT_ID` — Frontend Google OAuth client ID
-- `VITE_API_IP`, `VITE_API_PORT`, `VITE_HTTPS_ENABLED` — Frontend API config
+Single `.env` in the **root** directory. Loaded by:
+- `backend/src/index.js`, `backend/src/db.js`, `backend/src/conversations.js` (via `dotenv`, path `../.env` from `src/`)
+- Frontend via Vite's `envDir` config (only `VITE_*` vars exposed to browser)
 
-`.env` is loaded from the **root** directory by both `backend/src/db.js` and `backend/src/conversations.js` (resolve up one level from `src/`).
+Required variables:
+- `API_IP`, `API_PORT` — backend server bind address
+- `MONGODB_URI`, `MONGODB_DB` — MongoDB connection
+- `JWT_SECRET` — JWT signing secret
+- `LLAMA_ENDPOINT` — LLM API base URL
+- `THINKER_MODEL`, `REFLEX_MODEL` — model names for routing
+- `LLM_TIMEOUT` — LLM request timeout in seconds
+- `HONCHO_API_KEY`, `HONCHO_API_URL` — Honcho memory SDK
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` — Google OAuth backend
+- `VITE_GOOGLE_CLIENT_ID` — Google OAuth frontend
 
 ## Gotchas
 

@@ -31,13 +31,12 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// 2. Load .env from the ROOT of backend
-dotenv.config({ path: path.resolve(__dirname, '.env') });
+// 2. Load .env from the repo root
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const app = express();
 const PORT = process.env.API_PORT || 3001;
 const API_IP = process.env.API_IP || '0.0.0.0';
-const API_HTTPS_ENABLED = process.env.API_HTTPS_ENABLED === 'true';
 
 // Middleware
 app.use(cors());
@@ -253,8 +252,7 @@ app.post('/mcp', async (req, res) => {
 // ==========================================
 
 // Start Server
-const protocol = API_HTTPS_ENABLED ? 'https' : 'http';
 app.listen(PORT, API_IP, () => {
-  console.log(`🚀 Backend API running on ${protocol}://${API_IP}:${PORT}`);
-  console.log(`🤖 MCP Streamable HTTP Endpoint: ${protocol}://${API_IP}:${PORT}/mcp`);
+  console.log(`🚀 Backend API running on http://${API_IP}:${PORT}`);
+  console.log(`🤖 MCP Streamable HTTP Endpoint: http://${API_IP}:${PORT}/mcp`);
 });

@@ -6,10 +6,6 @@ import Login from './components/Login';
 import Settings from './components/Settings';
 import './App.css';
 
-// Determine API URL dynamically based on environment variables
-const isHttps = import.meta.env.VITE_HTTPS_ENABLED === 'true';
-const apiIp = import.meta.env.VITE_API_IP || 'localhost';
-const apiPort = import.meta.env.VITE_API_PORT || '3001';
 const API_URL = `/api`;
 
 function App() {
