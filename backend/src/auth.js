@@ -150,7 +150,7 @@ export async function googleLogin(req, res) {
       }
     } else {
       user = new User({ email, googleId, password: null });
-      await newUser.save();
+      await user.save();
     }
 
     const token = generateToken(user);
