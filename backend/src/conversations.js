@@ -11,7 +11,7 @@ import { buildLlmPayload } from './generatePrompt.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const LLAMA_BASE_URL = process.env.LLAMA_ENDPOINT || 'http://10.10.10.30:8888/v1';
 const LLM_TIMEOUT = parseInt(process.env.LLM_TIMEOUT, 10) || 600;
