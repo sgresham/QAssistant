@@ -1,21 +1,4 @@
 services:
-  # --- Frontend Service ---
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        - VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID}
-    restart: unless-stopped
-    ports:
-      - "8111:8111"
-      - "8112:8112"
-    volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d
-      - ./nginx/certs:/etc/nginx/certs
-      - ./nginx/data/certs:/etc/letsencrypt # Persist Let's Encrypt certs
-      - ./nginx/data/www:/var/www/certbot   # For ACME challenges
-
   # --- Backend Service ---
   backend:
     build:
