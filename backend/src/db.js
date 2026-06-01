@@ -1,3 +1,4 @@
+import fs from 'fs';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -7,8 +8,11 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// 2. Load .env from the ROOT directory
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+// 2. Load .env from the repo root (no-op in Docker; env vars come from docker-compose)
+const envPath = path.resolve(__dirname, '../../.env');
+if (fs.existsSync(envPath)) {
+  dotenv.config({ path: envPath });
+}
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://10.10.10.30:27017';
 const MONGODB_DB = process.env.MONGODB_DB || 'chat_app';
