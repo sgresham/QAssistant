@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
-function Settings({ token }) {
+function Settings({ token, theme, setTheme, sidebarPosition, setSidebarPosition }) {
   const [mcpServers, setMcpServers] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingServer, setEditingServer] = useState(null);
@@ -117,6 +117,38 @@ function Settings({ token }) {
 
   return (
     <div className="settings-container">
+      <div className="settings-group">
+        <h3>Theme</h3>
+        <div className="pill-group">
+          {['light', 'subtle-dark', 'high-contrast'].map(t => (
+            <button
+              key={t}
+              className={`pill-btn ${theme === t ? 'active' : ''}`}
+              onClick={() => { setTheme(t); localStorage.setItem('theme', t); }}
+            >
+              {t === 'light' ? 'Light' : t === 'subtle-dark' ? 'Subtle Dark' : 'High-Contrast'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="settings-group">
+        <h3>Sidebar Position</h3>
+        <div className="pill-group">
+          {['left', 'right'].map(pos => (
+            <button
+              key={pos}
+              className={`pill-btn ${sidebarPosition === pos ? 'active' : ''}`}
+              onClick={() => { setSidebarPosition(pos); localStorage.setItem('sidebarPosition', pos); }}
+            >
+              {pos.charAt(0).toUpperCase() + pos.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <hr className="settings-divider" />
+
       <div className="settings-header">
         <h2>MCP Servers</h2>
         <button className="btn-primary" onClick={() => handleOpenModal()}>

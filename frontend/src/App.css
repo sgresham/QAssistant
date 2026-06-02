@@ -634,6 +634,7 @@ body {
   padding: 2rem;
   overflow-y: auto;
   background-color: #f9f9f9;
+  order: 2;
 }
 
 .settings-header {
@@ -862,4 +863,368 @@ body {
 
 .logout-btn:hover {
   background-color: #ffe6e6;
+}
+
+/* Preferences Section */
+.settings-group {
+  margin-bottom: 1.5rem;
+}
+
+.settings-group h3 {
+  margin: 0 0 0.75rem 0;
+  font-size: 1rem;
+  color: #333;
+}
+
+.settings-divider {
+  border: none;
+  border-top: 1px solid #ddd;
+  margin: 1.5rem 0;
+}
+
+.pill-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.pill-btn {
+  padding: 0.4rem 1rem;
+  border: 1px solid #ccc;
+  border-radius: 20px;
+  background: white;
+  color: #555;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+}
+
+.pill-btn.active {
+  background: #3498db;
+  color: white;
+  border-color: #3498db;
+}
+
+.pill-btn:hover:not(.active) {
+  background: #f0f0f0;
+}
+
+/* Sidebar Right Layout */
+.app-container.sidebar-right .sidebar {
+  order: 2;
+  border-right: none;
+  border-left: 1px solid #34495e;
+}
+
+.app-container.sidebar-right .main-chat {
+  order: 1;
+}
+
+.app-container.sidebar-right .settings-container {
+  order: 1;
+}
+
+/* Subtle Dark Theme */
+.app-container.theme-subtle-dark .main-chat {
+  background-color: #1e1e2e;
+}
+
+.app-container.theme-subtle-dark .main-chat h1 {
+  color: #cdd6f4;
+  background-color: #181825;
+  border-color: #313244;
+}
+
+.app-container.theme-subtle-dark .controls {
+  background-color: #181825;
+  border-color: #313244;
+}
+
+.app-container.theme-subtle-dark .controls label {
+  color: #bac2de;
+}
+
+.app-container.theme-subtle-dark .controls select {
+  background-color: #313244;
+  color: #cdd6f4;
+  border-color: #45475a;
+}
+
+.app-container.theme-subtle-dark .bot-message {
+  background-color: #313244;
+  color: #cdd6f4;
+}
+
+.app-container.theme-subtle-dark .input-area {
+  background-color: #181825;
+  border-color: #313244;
+}
+
+.app-container.theme-subtle-dark .input-area textarea {
+  background-color: #313244;
+  color: #cdd6f4;
+  border-color: #45475a;
+}
+
+.app-container.theme-subtle-dark .settings-container {
+  background-color: #1e1e2e;
+}
+
+.app-container.theme-subtle-dark .settings-header h2,
+.app-container.theme-subtle-dark .settings-group h3 {
+  color: #cdd6f4;
+}
+
+.app-container.theme-subtle-dark .mcp-server-card {
+  background-color: #313244;
+  border-color: #45475a;
+  color: #cdd6f4;
+}
+
+.app-container.theme-subtle-dark .mcp-server-info h3 {
+  color: #cdd6f4;
+}
+
+.app-container.theme-subtle-dark .mcp-url {
+  color: #bac2de;
+}
+
+.app-container.theme-subtle-dark .mcp-headers {
+  color: #a6adc8;
+}
+
+.app-container.theme-subtle-dark .empty-state {
+  color: #bac2de;
+}
+
+.app-container.theme-subtle-dark .modal-content {
+  background-color: #313244;
+  color: #cdd6f4;
+}
+
+.app-container.theme-subtle-dark .modal-content h3 {
+  color: #cdd6f4;
+}
+
+.app-container.theme-subtle-dark .form-group label {
+  color: #bac2de;
+}
+
+.app-container.theme-subtle-dark .form-group input,
+.app-container.theme-subtle-dark .form-group textarea {
+  background-color: #45475a;
+  color: #cdd6f4;
+  border-color: #585b70;
+}
+
+.app-container.theme-subtle-dark .settings-btn:hover {
+  background-color: #313244;
+  color: #cdd6f4;
+}
+
+.app-container.theme-subtle-dark .user-profile {
+  border-color: #313244;
+}
+
+.app-container.theme-subtle-dark .user-email {
+  color: #bac2de;
+}
+
+.app-container.theme-subtle-dark .logout-btn:hover {
+  background-color: #450000;
+}
+
+.app-container.theme-subtle-dark .pill-btn {
+  background-color: #313244;
+  color: #bac2de;
+  border-color: #45475a;
+}
+
+.app-container.theme-subtle-dark .pill-btn:hover:not(.active) {
+  background-color: #45475a;
+}
+
+.app-container.theme-subtle-dark .settings-divider {
+  border-color: #313244;
+}
+
+.app-container.theme-subtle-dark .markdown-content blockquote {
+  color: #bac2de;
+}
+
+.app-container.theme-subtle-dark .markdown-content th {
+  background-color: #313244;
+  color: #cdd6f4;
+}
+
+.app-container.theme-subtle-dark .markdown-content td,
+.app-container.theme-subtle-dark .markdown-content th {
+  border-color: #45475a;
+}
+
+.app-container.theme-subtle-dark .meta-info,
+.app-container.theme-subtle-dark .loading {
+  color: #6c7086;
+}
+
+.app-container.theme-subtle-dark .add-folder-form input {
+  background-color: #313244;
+  color: #cdd6f4;
+  border-color: #45475a;
+}
+
+/* High Contrast Dark Theme */
+.app-container.theme-high-contrast .main-chat {
+  background-color: #0d0d0d;
+}
+
+.app-container.theme-high-contrast .main-chat h1 {
+  color: #ffffff;
+  background-color: #000;
+  border-color: #333;
+}
+
+.app-container.theme-high-contrast .controls {
+  background-color: #000;
+  border-color: #333;
+}
+
+.app-container.theme-high-contrast .controls label {
+  color: #ffffff;
+}
+
+.app-container.theme-high-contrast .controls select {
+  background-color: #1a1a1a;
+  color: #ffffff;
+  border-color: #444;
+}
+
+.app-container.theme-high-contrast .bot-message {
+  background-color: #1a1a1a;
+  color: #ffffff;
+}
+
+.app-container.theme-high-contrast .input-area {
+  background-color: #000;
+  border-color: #333;
+}
+
+.app-container.theme-high-contrast .input-area textarea {
+  background-color: #1a1a1a;
+  color: #ffffff;
+  border-color: #444;
+}
+
+.app-container.theme-high-contrast .input-area button {
+  background-color: #0066cc;
+}
+
+.app-container.theme-high-contrast .input-area button:hover:not(:disabled) {
+  background-color: #0052a3;
+}
+
+.app-container.theme-high-contrast .settings-container {
+  background-color: #0d0d0d;
+}
+
+.app-container.theme-high-contrast .settings-header h2,
+.app-container.theme-high-contrast .settings-group h3 {
+  color: #ffffff;
+}
+
+.app-container.theme-high-contrast .mcp-server-card {
+  background-color: #1a1a1a;
+  border-color: #333;
+  color: #ffffff;
+}
+
+.app-container.theme-high-contrast .mcp-server-info h3 {
+  color: #ffffff;
+}
+
+.app-container.theme-high-contrast .mcp-url {
+  color: #cccccc;
+}
+
+.app-container.theme-high-contrast .mcp-headers {
+  color: #999999;
+}
+
+.app-container.theme-high-contrast .empty-state {
+  color: #cccccc;
+}
+
+.app-container.theme-high-contrast .modal-content {
+  background-color: #1a1a1a;
+  color: #ffffff;
+}
+
+.app-container.theme-high-contrast .modal-content h3 {
+  color: #ffffff;
+}
+
+.app-container.theme-high-contrast .form-group label {
+  color: #ffffff;
+}
+
+.app-container.theme-high-contrast .form-group input,
+.app-container.theme-high-contrast .form-group textarea {
+  background-color: #2a2a2a;
+  color: #ffffff;
+  border-color: #444;
+}
+
+.app-container.theme-high-contrast .settings-btn:hover {
+  background-color: #1a1a1a;
+  color: #ffffff;
+}
+
+.app-container.theme-high-contrast .user-profile {
+  border-color: #333;
+}
+
+.app-container.theme-high-contrast .user-email {
+  color: #cccccc;
+}
+
+.app-container.theme-high-contrast .logout-btn:hover {
+  background-color: #330000;
+}
+
+.app-container.theme-high-contrast .pill-btn {
+  background-color: #1a1a1a;
+  color: #cccccc;
+  border-color: #444;
+}
+
+.app-container.theme-high-contrast .pill-btn:hover:not(.active) {
+  background-color: #2a2a2a;
+}
+
+.app-container.theme-high-contrast .settings-divider {
+  border-color: #333;
+}
+
+.app-container.theme-high-contrast .markdown-content blockquote {
+  color: #cccccc;
+}
+
+.app-container.theme-high-contrast .markdown-content th {
+  background-color: #1a1a1a;
+  color: #ffffff;
+}
+
+.app-container.theme-high-contrast .markdown-content td,
+.app-container.theme-high-contrast .markdown-content th {
+  border-color: #333;
+}
+
+.app-container.theme-high-contrast .meta-info,
+.app-container.theme-high-contrast .loading {
+  color: #666;
+}
+
+.app-container.theme-high-contrast .add-folder-form input {
+  background-color: #1a1a1a;
+  color: #ffffff;
+  border-color: #444;
 }

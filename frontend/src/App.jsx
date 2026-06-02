@@ -13,7 +13,9 @@ function App() {
   const [modelMode, setModelMode] = useState('auto');
   const [lastModel, setLastModel] = useState('');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
+  const [sidebarPosition, setSidebarPosition] = useState(() => localStorage.getItem('sidebarPosition') || 'left');
+
   // Auth State
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(localStorage.getItem('token'));
@@ -328,7 +330,7 @@ function App() {
   }
 
   return (
-    <div className="app-container">
+    <div className={`app-container theme-${theme} ${sidebarPosition === 'right' ? 'sidebar-right' : ''}`}>
       <Sidebar
         conversations={conversations}
         folders={folders}
@@ -361,7 +363,14 @@ function App() {
         activeView={activeView}
       />
       {activeView === 'settings' ? (
-        <Settings user={user} token={token} />
+        <Settings
+          user={user}
+          token={token}
+          theme={theme}
+          setTheme={setTheme}
+          sidebarPosition={sidebarPosition}
+          setSidebarPosition={setSidebarPosition}
+        />
       ) : (
         <MainChat
           chatHistory={chatHistory}
