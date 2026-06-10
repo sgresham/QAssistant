@@ -32,6 +32,41 @@ function hashPrompt(prompt) {
   return crypto.createHash('sha256').update(prompt || '').digest('hex');
 }
 
+/**
+ * Attempts to generate a conversation title via LLM.
+ * Falls back to truncated user input on failure.
+ * @param {string} currentInput - The user's input message
+ * @param {Array} messages - Conversation messages array
+ * @returns {string} Generated or fallback title
+ */
+export async function generateTitle(currentInput, messages) {
+  const fallbackTitle = currentInput.substring(0, 50) + (currentInput.length > 50 ? '...' : '');
+
+  if (messages.length <= 1) {
+    return fallbackTitle;
+  }
+
+  try {
+    const titleContextMessages = messages.slice(0, 2);
+    const titlePrompt = [
+      { role: "system", content: "You are a helpful assistant. Generate a short title (max 50 chars). No quotes." },
+      { role: "user", content: `Generate title:\n\n${titleContextMessages.map(m => `[${m.role}]: ${m.content}`).join('\n')}` }
+    ];
+
+    const titleResponse = await axios.post(`${LLAMA_BASE_URL}/chat/completions`, {
+      model: MODELS.REFLEX,
+      messages: titlePrompt,
+      temperature: 0.3,
+      max_tokens: 50
+    }, { timeout: 30000 });
+
+    return titleResponse.data.choices[0].message.content.trim();
+  } catch (e) {
+    console.error('Title generation failed, using fallback:', e.message);
+    return fallbackTitle;
+  }
+}
+
 const honcho = new Honcho({
   apiKey: process.env.HONCHO_API_KEY,
   baseURL: process.env.HONCHO_API_URL,
@@ -375,26 +410,8 @@ export async function chat(req, res) {
       const isDefaultTitle = conversationDoc.title === 'New Conversation' ||
         conversationDoc.title === currentInput.substring(0, 30) + (currentInput.length > 30 ? '...' : '');
 
-      if (isDefaultTitle && conversationDoc.messages.length > 1) {
-        try {
-          const titleContextMessages = conversationDoc.messages.slice(0, 2);
-          const titlePrompt = [
-            { role: "system", content: "You are a helpful assistant. Generate a short title (max 50 chars). No quotes." },
-            { role: "user", content: `Generate title:\n\n${titleContextMessages.map(m => `[${m.role}]: ${m.content}`).join('\n')}` }
-          ];
-
-          const titleResponse = await axios.post(`${LLAMA_BASE_URL}/chat/completions`, {
-            model: MODELS.REFLEX,
-            messages: titlePrompt,
-            temperature: 0.3,
-            max_tokens: 50
-          }, { timeout: 30000 });
-
-          conversationDoc.title = titleResponse.data.choices[0].message.content.trim();
-        } catch (e) {
-          console.error('Title generation failed, using fallback:', e.message);
-          conversationDoc.title = currentInput.substring(0, 50) + (currentInput.length > 50 ? '...' : '');
-        }
+      if (isDefaultTitle) {
+        conversationDoc.title = await generateTitle(currentInput, conversationDoc.messages);
       }
       await conversationDoc.save();
     }

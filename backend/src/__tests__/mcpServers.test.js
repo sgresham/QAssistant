@@ -80,6 +80,18 @@ describe('MCP Server CRUD', () => {
       expect(res.body.headers).toEqual({ Authorization: 'Bearer secret' });
     });
 
+    it('creates an MCP server with enabled defaulting to true', async () => {
+      const handler = await importHandler('createMcpServer');
+      const req = {
+        body: { name: 'Default Enabled', url: 'http://localhost:8080/mcp' },
+        user: { id: testUser._id.toString() },
+      };
+      const res = mockRes();
+      await handler(req, res);
+      expect(res.statusCode).toBe(201);
+      expect(res.body.enabled).toBe(true);
+    });
+
     it('returns 400 when name is missing', async () => {
       const handler = await importHandler('createMcpServer');
       const req = {
@@ -196,6 +208,35 @@ describe('MCP Server CRUD', () => {
       expect(res.statusCode).toBe(200);
       expect(res.body.name).toBe('New');
       expect(res.body.url).toBe('http://new.com');
+    });
+
+    it('disables server by setting enabled to false', async () => {
+      const server = await McpServer.create({ name: 'Test', url: 'http://t.com', userId: testUser._id });
+      expect(server.enabled).toBe(true);
+      const handler = await importHandler('updateMcpServer');
+      const req = {
+        params: { id: server._id.toString() },
+        body: { enabled: false },
+        user: { id: testUser._id.toString() },
+      };
+      const res = mockRes();
+      await handler(req, res);
+      expect(res.statusCode).toBe(200);
+      expect(res.body.enabled).toBe(false);
+    });
+
+    it('re-enables server by setting enabled to true', async () => {
+      const server = await McpServer.create({ name: 'Test', url: 'http://t.com', userId: testUser._id, enabled: false });
+      const handler = await importHandler('updateMcpServer');
+      const req = {
+        params: { id: server._id.toString() },
+        body: { enabled: true },
+        user: { id: testUser._id.toString() },
+      };
+      const res = mockRes();
+      await handler(req, res);
+      expect(res.statusCode).toBe(200);
+      expect(res.body.enabled).toBe(true);
     });
 
     it('updates headers', async () => {
