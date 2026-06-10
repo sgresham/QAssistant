@@ -301,13 +301,8 @@ function App() {
         }
       }
 
-      // Update conversation title if it's the first user message
-      const firstUserMsgIndex = messagesToSend.findIndex(m => m.role === 'user');
-      if (firstUserMsgIndex === 0) {
-        const title = message.slice(0, 30) + (message.length > 30 ? '...' : '');
-        await axios.put(`${API_URL}/conversations/${activeConversationId}`, { title });
-        await fetchConversations();
-      }
+      // Refresh conversations to pick up LLM-generated title from backend
+      await fetchConversations();
 
     } catch (error) {
       console.error("Error sending message", error);

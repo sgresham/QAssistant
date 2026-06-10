@@ -392,7 +392,8 @@ export async function chat(req, res) {
 
           conversationDoc.title = titleResponse.data.choices[0].message.content.trim();
         } catch (e) {
-          console.error('Title generation fallback invoked.');
+          console.error('Title generation failed, using fallback:', e.message);
+          conversationDoc.title = currentInput.substring(0, 50) + (currentInput.length > 50 ? '...' : '');
         }
       }
       await conversationDoc.save();
