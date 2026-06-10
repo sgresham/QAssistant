@@ -231,7 +231,7 @@ export async function chat(req, res) {
     let mcpTools = [];
     let mcpServers = [];
     try {
-      mcpServers = await McpServer.find({ userId });
+      mcpServers = await McpServer.find({ userId, enabled: true });
       for (const server of mcpServers) {
         const tools = await fetchMcpTools(server);
         mcpTools = [...mcpTools, ...tools];

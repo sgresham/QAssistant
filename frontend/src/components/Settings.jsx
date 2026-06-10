@@ -101,6 +101,18 @@ function Settings({ token, theme, setTheme, sidebarPosition, setSidebarPosition 
     }
   };
 
+  const handleToggle = async (server) => {
+    try {
+      await axios.put(`/api/mcp-servers/${server._id}`, { enabled: !server.enabled }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      fetchMcpServers();
+    } catch (err) {
+      console.error('Failed to toggle MCP server:', err);
+      setError('Failed to toggle MCP server.');
+    }
+  };
+
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this MCP server?')) return;
 
@@ -163,9 +175,19 @@ function Settings({ token, theme, setTheme, sidebarPosition, setSidebarPosition 
           <p className="empty-state">No MCP servers configured. Add one to get started.</p>
         ) : (
           mcpServers.map(server => (
-            <div key={server._id} className="mcp-server-card">
+            <div key={server._id} className={`mcp-server-card ${server.enabled === false ? 'mcp-disabled' : ''}`}>
               <div className="mcp-server-info">
-                <h3>{server.name}</h3>
+                <div className="mcp-server-header">
+                  <h3>{server.name}</h3>
+                  <label className="toggle-switch" title={server.enabled ? 'Enabled — click to disable' : 'Disabled — click to enable'}>
+                    <input
+                      type="checkbox"
+                      checked={server.enabled !== false}
+                      onChange={() => handleToggle(server)}
+                    />
+                    <span className="toggle-slider"></span>
+                  </label>
+                </div>
                 <p className="mcp-url">{server.url}</p>
                 {Object.keys(server.headers || {}).length > 0 && (
                   <p className="mcp-headers">

@@ -66,13 +66,14 @@ export async function updateMcpServer(req, res) {
     if (!dbConnected) {
       return res.status(503).json({ error: 'Database not connected' });
     }
-    const { name, url, headers } = req.body;
+    const { name, url, headers, enabled } = req.body;
     const userId = req.user.id;
 
     const updateData = {};
     if (name !== undefined) updateData.name = name;
     if (url !== undefined) updateData.url = url;
     if (headers !== undefined) updateData.headers = headers;
+    if (enabled !== undefined) updateData.enabled = enabled;
     updateData.updatedAt = new Date();
 
     if (Object.keys(updateData).length === 0) {

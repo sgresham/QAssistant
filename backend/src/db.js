@@ -63,6 +63,7 @@ const McpServerSchema = new mongoose.Schema({
   name: { type: String, required: true },
   url: { type: String, required: true },
   headers: { type: Object, default: {} },
+  enabled: { type: Boolean, default: true },
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
