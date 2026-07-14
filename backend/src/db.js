@@ -51,12 +51,30 @@ const ConversationSchema = new mongoose.Schema({
   }],
   folderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Folder', default: null },
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  providerId: { type: mongoose.Schema.Types.ObjectId, ref: 'AiProvider', default: null },
+  selectedModel: { type: String, default: '' },
   systemPrompt: { type: String, default: '' },
   systemPromptHash: { type: String, default: '' },
   createdAt: { type: Date, default: Date.now }
 });
 
 export const Conversation = mongoose.model('Conversation', ConversationSchema);
+
+// --- AI Provider Schema ---
+const AiProviderSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  baseUrl: { type: String, required: true },
+  apiKey: { type: String, default: '' },
+  models: [{ type: String }],
+  enabled: { type: Boolean, default: true },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+
+AiProviderSchema.index({ userId: 1, name: 1 }, { unique: true });
+
+export const AiProvider = mongoose.model('AiProvider', AiProviderSchema);
 
 // --- MCP Server Schema ---
 const McpServerSchema = new mongoose.Schema({

@@ -20,8 +20,5 @@
     "concurrently": "^9.2.1",
     "wait-on": "^9.0.4"
   },
-  "dependencies": {
-    "@honcho-ai/sdk": "^2.1.1",
-    "@modelcontextprotocol/client": "^1.0.0"
-  }
+  "dependencies": {}
 }

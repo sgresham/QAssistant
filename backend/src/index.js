@@ -27,6 +27,13 @@ import {
   updateMcpServer,
   deleteMcpServer
 } from './mcpServers.js';
+import {
+  getAiProviders,
+  getAiProvider,
+  createAiProvider,
+  updateAiProvider,
+  deleteAiProvider
+} from './aiProviders.js';
 
 // 1. Set up __dirname for ES Modules
 const __filename = fileURLToPath(import.meta.url);
@@ -72,6 +79,13 @@ app.delete('/api/conversations/:id', authenticateToken, deleteConversation);
 
 // --- Chat Endpoint (Streaming) (Protected) ---
 app.post('/api/chat', authenticateToken, chat);
+
+// --- AI Provider API Endpoints (Protected) ---
+app.get('/api/ai-providers', authenticateToken, getAiProviders);
+app.get('/api/ai-providers/:id', authenticateToken, getAiProvider);
+app.post('/api/ai-providers', authenticateToken, createAiProvider);
+app.put('/api/ai-providers/:id', authenticateToken, updateAiProvider);
+app.delete('/api/ai-providers/:id', authenticateToken, deleteAiProvider);
 
 // --- MCP Server API Endpoints (Protected) ---
 app.get('/api/mcp-servers', authenticateToken, getMcpServers);

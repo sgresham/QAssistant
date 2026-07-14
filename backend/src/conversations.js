@@ -1,5 +1,5 @@
 import fs from 'fs';
-import { Conversation, Folder, dbConnected, McpServer } from './db.js';
+import { Conversation, Folder, dbConnected, McpServer, AiProvider } from './db.js';
 import axios from 'axios';
 import { Honcho } from "@honcho-ai/sdk";
 import dotenv from 'dotenv';
@@ -28,6 +28,26 @@ const MODELS = {
 
 const DEFAULT_SYSTEM_PROMPT = 'You are a helpful AI assistant.';
 
+async function resolveProviderConfig(providerId, userId) {
+  if (providerId) {
+    const provider = await AiProvider.findOne({ _id: providerId, userId, enabled: true });
+    if (provider) {
+      return {
+        baseUrl: provider.baseUrl,
+        apiKey: provider.apiKey,
+        model: provider.models.length > 0 ? provider.models[0] : MODELS.REFLEX,
+        providerId: provider._id
+      };
+    }
+  }
+  return {
+    baseUrl: LLAMA_BASE_URL,
+    apiKey: '',
+    model: MODELS.REFLEX,
+    providerId: null
+  };
+}
+
 function hashPrompt(prompt) {
   return crypto.createHash('sha256').update(prompt || '').digest('hex');
 }
@@ -36,31 +56,43 @@ function hashPrompt(prompt) {
  * Attempts to generate a conversation title via LLM.
  * Falls back to truncated user input on failure.
  * @param {string} currentInput - The user's input message
- * @param {Array} messages - Conversation messages array
+ * @param {Array} incomingMessages - Raw incoming messages from request (clean, no enrichment)
  * @returns {string} Generated or fallback title
  */
-export async function generateTitle(currentInput, messages) {
+export async function generateTitle(currentInput, incomingMessages, providerConfig = null) {
   const fallbackTitle = currentInput.substring(0, 50) + (currentInput.length > 50 ? '...' : '');
 
-  if (messages.length <= 1) {
+  const nonSystemMessages = incomingMessages.filter(m => m.role !== 'system');
+  if (nonSystemMessages.length < 1) {
     return fallbackTitle;
   }
 
+  const cfg = providerConfig || { baseUrl: LLAMA_BASE_URL, apiKey: '', model: MODELS.REFLEX };
+
   try {
-    const titleContextMessages = messages.slice(0, 2);
+    const contextBlock = nonSystemMessages.slice(0, 3)
+      .map(m => `[${m.role}]: ${m.content}`)
+      .join('\n');
+
     const titlePrompt = [
-      { role: "system", content: "You are a helpful assistant. Generate a short title (max 50 chars). No quotes." },
-      { role: "user", content: `Generate title:\n\n${titleContextMessages.map(m => `[${m.role}]: ${m.content}`).join('\n')}` }
+      { role: "system", content: "You are a helpful assistant. Generate a short title (max 50 chars) summarizing the conversation. Return ONLY the title, no quotes, no labels." },
+      { role: "user", content: `Generate a title for this conversation:\n\n${contextBlock}` }
     ];
 
-    const titleResponse = await axios.post(`${LLAMA_BASE_URL}/chat/completions`, {
-      model: MODELS.REFLEX,
+    const axiosConfig = { timeout: 30000 };
+    if (cfg.apiKey) {
+      axiosConfig.headers = { 'Authorization': `Bearer ${cfg.apiKey}` };
+    }
+
+    const titleResponse = await axios.post(`${cfg.baseUrl}/chat/completions`, {
+      model: cfg.model,
       messages: titlePrompt,
       temperature: 0.3,
       max_tokens: 50
-    }, { timeout: 30000 });
+    }, axiosConfig);
 
-    return titleResponse.data.choices[0].message.content.trim();
+    const title = titleResponse.data.choices[0].message.content;
+    return title ? title.trim() : fallbackTitle;
   } catch (e) {
     console.error('Title generation failed, using fallback:', e.message);
     return fallbackTitle;
@@ -197,7 +229,7 @@ export async function deleteConversation(req, res) {
 
 // 6. Chat Endpoint (Streaming with Tool Support)
 export async function chat(req, res) {
-  const { messages: incomingMessages, modelPreference = 'auto', conversationId } = req.body;
+  const { messages: incomingMessages, modelPreference = 'auto', conversationId, providerId, selectedModel } = req.body;
   const userId = req.user.id;
 
   if (!incomingMessages || !Array.isArray(incomingMessages)) {
@@ -285,11 +317,19 @@ export async function chat(req, res) {
       timezone: USER_TIMEZONE
     });
 
-    // 5. Model Routing
-    let selectedModel = MODELS.REFLEX;
-    // if (modelPreference === 'reflex') selectedModel = MODELS.REFLEX;
-    // else if (modelPreference === 'thinker') selectedModel = MODELS.THINKER;
-    // else if (currentInput && currentInput.length < 20) selectedModel = MODELS.REFLEX;
+    // 5. Resolve Provider Configuration
+    const providerConfig = await resolveProviderConfig(
+      providerId || conversationDoc.providerId,
+      userId
+    );
+    const modelToUse = selectedModel || conversationDoc.selectedModel || providerConfig.model;
+
+    if (providerConfig.providerId && !conversationDoc.providerId) {
+      conversationDoc.providerId = providerConfig.providerId;
+    }
+    if (!conversationDoc.selectedModel) {
+      conversationDoc.selectedModel = modelToUse;
+    }
 
     // 6. Tool-Execution Execution Loop
     let finalResponse = "";
@@ -299,16 +339,21 @@ export async function chat(req, res) {
     while (maxToolCalls > 0) {
       maxToolCalls--;
       try {
+        const axiosOptions = { timeout: LLM_TIMEOUT * 1000, responseType: 'stream' };
+        if (providerConfig.apiKey) {
+          axiosOptions.headers = { 'Authorization': `Bearer ${providerConfig.apiKey}` };
+        }
+
         const response = await axios.post(
-          `${LLAMA_BASE_URL}/chat/completions`,
+          `${providerConfig.baseUrl}/chat/completions`,
           {
-            model: selectedModel,
+            model: modelToUse,
             messages: currentMessagesForLlm,
             tools: preparedTools,
             stream: true,
             temperature: 0.7
           },
-          { timeout: LLM_TIMEOUT * 1000, responseType: 'stream' }
+          axiosOptions
         );
 
         const stream = response.data;
@@ -340,7 +385,7 @@ export async function chat(req, res) {
                   });
                 } else if (delta.content) {
                   accumulatedContent += delta.content;
-                  res.write(`data: ${JSON.stringify({ content: delta.content, model: selectedModel })}\n\n`);
+                  res.write(`data: ${JSON.stringify({ content: delta.content, model: modelToUse })}\n\n`);
                 }
               } catch (e) { }
             }
@@ -407,11 +452,12 @@ export async function chat(req, res) {
     if (conversationDoc) {
       conversationDoc.messages = currentMessagesForLlm;
 
-      const isDefaultTitle = conversationDoc.title === 'New Conversation' ||
+      const isDefaultTitle = !conversationDoc.title ||
+        conversationDoc.title === 'New Conversation' ||
         conversationDoc.title === currentInput.substring(0, 30) + (currentInput.length > 30 ? '...' : '');
 
       if (isDefaultTitle) {
-        conversationDoc.title = await generateTitle(currentInput, conversationDoc.messages);
+        conversationDoc.title = await generateTitle(currentInput, incomingMessages, providerConfig);
       }
       await conversationDoc.save();
     }

@@ -10,7 +10,12 @@ function MainChat({
   activeConversationId,
   onSendMessage,
   loading,
-  lastModel
+  lastModel,
+  aiProviders,
+  activeProviderId,
+  setActiveProviderId,
+  activeModel,
+  setActiveModel
 }) {
   const [input, setInput] = React.useState('');
   const streamingMessageIndex = useRef(null);
@@ -62,12 +67,40 @@ function MainChat({
       <h1>AI Assistant (Dual-Brain)</h1>
 
       <div className="controls">
-        <label>Model Strategy: </label>
-        <select value={modelMode} onChange={(e) => setModelMode(e.target.value)}>
-          <option value="auto">Auto (Smart Routing)</option>
-          <option value="thinker">(High Intel)</option>
-          <option value="reflex">(Fast Reflex)</option>
+        <label>Provider: </label>
+        <select value={activeProviderId || ''} onChange={(e) => {
+          const pid = e.target.value;
+          setActiveProviderId(pid);
+          const provider = aiProviders.find(p => p._id === pid);
+          if (provider && provider.models.length > 0) {
+            setActiveModel(provider.models[0]);
+          } else {
+            setActiveModel('');
+          }
+        }}>
+          {aiProviders.filter(p => p.enabled !== false).length === 0 && (
+            <option value="">Default (Env)</option>
+          )}
+          {aiProviders.filter(p => p.enabled !== false).map(p => (
+            <option key={p._id} value={p._id}>{p.name}</option>
+          ))}
         </select>
+        {(() => {
+          const provider = aiProviders.find(p => p._id === activeProviderId);
+          if (provider && provider.models.length > 0) {
+            return (
+              <>
+                <label>Model: </label>
+                <select value={activeModel} onChange={(e) => setActiveModel(e.target.value)}>
+                  {provider.models.map(m => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              </>
+            );
+          }
+          return null;
+        })()}
       </div>
 
       <div 

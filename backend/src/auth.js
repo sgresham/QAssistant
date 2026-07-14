@@ -45,7 +45,7 @@ export function authenticateToken(req, res, next) {
   const secret = process.env.JWT_SECRET || 'default_secret_key_change_in_production';
   jwt.verify(token, secret, (err, user) => {
     if (err) {
-      return res.status(403).json({ error: 'Invalid or expired token' });
+      return res.status(401).json({ error: 'Invalid or expired token' });
     }
     req.user = user;
     next();

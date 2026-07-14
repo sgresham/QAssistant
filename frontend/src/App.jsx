@@ -35,6 +35,11 @@ function App() {
   const [editingFolderId, setEditingFolderId] = useState(null);
   const [editingPromptText, setEditingPromptText] = useState('');
 
+  // AI Provider State
+  const [aiProviders, setAiProviders] = useState([]);
+  const [activeProviderId, setActiveProviderId] = useState(null);
+  const [activeModel, setActiveModel] = useState('');
+
   // View State
   const [activeView, setActiveView] = useState('chat'); // 'chat' or 'settings'
 
@@ -49,9 +54,9 @@ function App() {
     }
   }, [token]);
 
-  // Configure Axios Interceptor for Auth
+  // Configure Axios Interceptors for Auth
   useEffect(() => {
-    const interceptor = axios.interceptors.request.use(
+    const requestInterceptor = axios.interceptors.request.use(
       (config) => {
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
@@ -63,8 +68,19 @@ function App() {
       }
     );
 
+    const responseInterceptor = axios.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (error.response?.status === 401 || error.response?.status === 403) {
+          handleLogout();
+        }
+        return Promise.reject(error);
+      }
+    );
+
     return () => {
-      axios.interceptors.request.eject(interceptor);
+      axios.interceptors.request.eject(requestInterceptor);
+      axios.interceptors.response.eject(responseInterceptor);
     };
   }, [token]);
 
@@ -73,6 +89,7 @@ function App() {
     if (user) {
       fetchConversations();
       fetchFolders();
+      fetchAiProviders();
     }
   }, [user]);
 
@@ -82,9 +99,6 @@ function App() {
       setConversations(res.data);
     } catch (error) {
       console.error("Failed to fetch conversations", error);
-      if (error.response?.status === 401) {
-        handleLogout();
-      }
     }
   };
 
@@ -94,9 +108,20 @@ function App() {
       setFolders(res.data);
     } catch (error) {
       console.error("Failed to fetch folders", error);
-      if (error.response?.status === 401) {
-        handleLogout();
+    }
+  };
+
+  const fetchAiProviders = async () => {
+    try {
+      const res = await axios.get(`${API_URL}/ai-providers`);
+      setAiProviders(res.data);
+      const enabled = res.data.filter(p => p.enabled !== false);
+      if (enabled.length > 0 && !activeProviderId) {
+        setActiveProviderId(enabled[0]._id);
+        setActiveModel(enabled[0].models?.[0] || '');
       }
+    } catch (error) {
+      console.error("Failed to fetch AI providers", error);
     }
   };
 
@@ -114,6 +139,9 @@ function App() {
     setChatHistory([{ role: 'system', content: 'You are a helpful AI assistant.' }]);
     setConversations([]);
     setFolders([]);
+    setAiProviders([]);
+    setActiveProviderId(null);
+    setActiveModel('');
     setActiveView('chat');
   };
 
@@ -128,7 +156,6 @@ function App() {
       await fetchConversations();
     } catch (error) {
       console.error("Failed to start new chat", error);
-      if (error.response?.status === 401) handleLogout();
     }
   };
 
@@ -141,7 +168,6 @@ function App() {
       setActiveView('chat');
     } catch (error) {
       console.error("Failed to load conversation", error);
-      if (error.response?.status === 401) handleLogout();
     }
   };
 
@@ -159,7 +185,6 @@ function App() {
       await fetchConversations();
     } catch (error) {
       console.error("Failed to delete conversation", error);
-      if (error.response?.status === 401) handleLogout();
     }
   };
 
@@ -169,7 +194,6 @@ function App() {
       await fetchConversations();
     } catch (error) {
       console.error("Failed to rename conversation", error);
-      if (error.response?.status === 401) handleLogout();
     }
   };
 
@@ -183,7 +207,6 @@ function App() {
       await fetchFolders();
     } catch (error) {
       console.error("Failed to create folder", error);
-      if (error.response?.status === 401) handleLogout();
     }
   };
 
@@ -196,7 +219,6 @@ function App() {
       await fetchFolders();
     } catch (error) {
       console.error("Failed to delete folder", error);
-      if (error.response?.status === 401) handleLogout();
     }
   };
 
@@ -218,7 +240,6 @@ function App() {
       await fetchFolders();
     } catch (error) {
       console.error("Failed to update folder system prompt", error);
-      if (error.response?.status === 401) handleLogout();
     }
   };
 
@@ -228,7 +249,6 @@ function App() {
       await fetchConversations();
     } catch (error) {
       console.error("Failed to move conversation", error);
-      if (error.response?.status === 401) handleLogout();
     }
   };
 
@@ -252,12 +272,14 @@ function App() {
           conversationId: activeConversationId,
           messages: messagesToSend,
           modelMode: modelMode,
-          lastModel: lastModel
+          lastModel: lastModel,
+          providerId: activeProviderId,
+          selectedModel: activeModel
         })
       });
 
       if (!response.ok) {
-        if (response.status === 401) {
+        if (response.status === 401 || response.status === 403) {
           handleLogout();
           return;
         }
@@ -306,11 +328,7 @@ function App() {
 
     } catch (error) {
       console.error("Error sending message", error);
-      if (error.message.includes('401')) {
-        handleLogout();
-      } else {
-        setChatHistory((prev) => [...prev, { role: 'assistant', content: "Error: Could not connect to the AI service." }]);
-      }
+      setChatHistory((prev) => [...prev, { role: 'assistant', content: "Error: Could not connect to the AI service." }]);
     } finally {
       setLoading(false);
     }
@@ -365,6 +383,8 @@ function App() {
           setTheme={setTheme}
           sidebarPosition={sidebarPosition}
           setSidebarPosition={setSidebarPosition}
+          aiProviders={aiProviders}
+          onAiProvidersChange={fetchAiProviders}
         />
       ) : (
         <MainChat
@@ -378,6 +398,11 @@ function App() {
           lastModel={lastModel}
           onLogout={handleLogout}
           user={user}
+          aiProviders={aiProviders}
+          activeProviderId={activeProviderId}
+          setActiveProviderId={setActiveProviderId}
+          activeModel={activeModel}
+          setActiveModel={setActiveModel}
         />
       )}
     </div>
