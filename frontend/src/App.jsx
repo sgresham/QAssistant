@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
+import { setOnUnauthorized, apiGet, apiPost, apiPut, apiDelete } from './api';
 import Sidebar from './components/Sidebar';
 import MainChat from './components/MainChat';
 import Login from './components/Login';
@@ -54,35 +54,10 @@ function App() {
     }
   }, [token]);
 
-  // Configure Axios Interceptors for Auth
+  // Register logout handler for 401/403 responses from api helper
   useEffect(() => {
-    const requestInterceptor = axios.interceptors.request.use(
-      (config) => {
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
-        }
-        return config;
-      },
-      (error) => {
-        return Promise.reject(error);
-      }
-    );
-
-    const responseInterceptor = axios.interceptors.response.use(
-      (response) => response,
-      (error) => {
-        if (error.response?.status === 401 || error.response?.status === 403) {
-          handleLogout();
-        }
-        return Promise.reject(error);
-      }
-    );
-
-    return () => {
-      axios.interceptors.request.eject(requestInterceptor);
-      axios.interceptors.response.eject(responseInterceptor);
-    };
-  }, [token]);
+    setOnUnauthorized(handleLogout);
+  }, []);
 
   // Fetch Data when Authenticated
   useEffect(() => {
@@ -95,8 +70,8 @@ function App() {
 
   const fetchConversations = async () => {
     try {
-      const res = await axios.get(`${API_URL}/conversations`);
-      setConversations(res.data);
+      const data = await apiGet(`${API_URL}/conversations`);
+      setConversations(data);
     } catch (error) {
       console.error("Failed to fetch conversations", error);
     }
@@ -104,8 +79,8 @@ function App() {
 
   const fetchFolders = async () => {
     try {
-      const res = await axios.get(`${API_URL}/folders`);
-      setFolders(res.data);
+      const data = await apiGet(`${API_URL}/folders`);
+      setFolders(data);
     } catch (error) {
       console.error("Failed to fetch folders", error);
     }
@@ -113,9 +88,9 @@ function App() {
 
   const fetchAiProviders = async () => {
     try {
-      const res = await axios.get(`${API_URL}/ai-providers`);
-      setAiProviders(res.data);
-      const enabled = res.data.filter(p => p.enabled !== false);
+      const data = await apiGet(`${API_URL}/ai-providers`);
+      setAiProviders(data);
+      const enabled = data.filter(p => p.enabled !== false);
       if (enabled.length > 0 && !activeProviderId) {
         setActiveProviderId(enabled[0]._id);
         setActiveModel(enabled[0].models?.[0] || '');
@@ -147,9 +122,9 @@ function App() {
 
   const startNewChat = async (folderId = null) => {
     try {
-      const res = await axios.post(`${API_URL}/conversations`, { folderId });
-      setActiveConversationId(res.data._id);
-      const systemMsg = res.data.messages?.find(m => m.role === 'system');
+      const data = await apiPost(`${API_URL}/conversations`, { folderId });
+      setActiveConversationId(data._id);
+      const systemMsg = data.messages?.find(m => m.role === 'system');
       setChatHistory(systemMsg ? [{ role: 'system', content: systemMsg.content }] : [{ role: 'system', content: 'You are a helpful AI assistant.' }]);
       setLastModel('');
       setActiveView('chat');
@@ -161,9 +136,9 @@ function App() {
 
   const loadConversation = async (id) => {
     try {
-      const res = await axios.get(`${API_URL}/conversations/${id}`);
+      const data = await apiGet(`${API_URL}/conversations/${id}`);
       setActiveConversationId(id);
-      setChatHistory(res.data.messages);
+      setChatHistory(data.messages);
       setLastModel('');
       setActiveView('chat');
     } catch (error) {
@@ -177,7 +152,7 @@ function App() {
     }
 
     try {
-      await axios.delete(`${API_URL}/conversations/${id}`);
+      await apiDelete(`${API_URL}/conversations/${id}`);
       if (activeConversationId === id) {
         setActiveConversationId(null);
         setChatHistory([{ role: 'system', content: 'You are a helpful AI assistant.' }]);
@@ -190,7 +165,7 @@ function App() {
 
   const renameConversation = async (id, newTitle) => {
     try {
-      await axios.put(`${API_URL}/conversations/${id}`, { title: newTitle });
+      await apiPut(`${API_URL}/conversations/${id}`, { title: newTitle });
       await fetchConversations();
     } catch (error) {
       console.error("Failed to rename conversation", error);
@@ -200,7 +175,7 @@ function App() {
   const createFolder = async () => {
     if (!newFolderName.trim()) return;
     try {
-      await axios.post(`${API_URL}/folders`, { name: newFolderName, systemPrompt: newFolderPrompt });
+      await apiPost(`${API_URL}/folders`, { name: newFolderName, systemPrompt: newFolderPrompt });
       setNewFolderName('');
       setNewFolderPrompt('');
       setIsAddingFolder(false);
@@ -215,7 +190,7 @@ function App() {
       return;
     }
     try {
-      await axios.delete(`${API_URL}/folders/${id}`);
+      await apiDelete(`${API_URL}/folders/${id}`);
       await fetchFolders();
     } catch (error) {
       console.error("Failed to delete folder", error);
@@ -234,7 +209,7 @@ function App() {
 
   const saveFolderSystemPrompt = async (folderId) => {
     try {
-      await axios.put(`${API_URL}/folders/${folderId}`, { systemPrompt: editingPromptText });
+      await apiPut(`${API_URL}/folders/${folderId}`, { systemPrompt: editingPromptText });
       setEditingFolderId(null);
       setEditingPromptText('');
       await fetchFolders();
@@ -245,7 +220,7 @@ function App() {
 
   const moveConversation = async (convId, targetFolderId) => {
     try {
-      await axios.put(`${API_URL}/conversations/${convId}`, { folderId: targetFolderId });
+      await apiPut(`${API_URL}/conversations/${convId}`, { folderId: targetFolderId });
       await fetchConversations();
     } catch (error) {
       console.error("Failed to move conversation", error);

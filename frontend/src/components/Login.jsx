@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import axios from 'axios';
 import { useGoogleLogin } from '@react-oauth/google';
 
 const API_URL = `api`;
@@ -11,20 +10,33 @@ function Login({ onLogin }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  async function apiPost(url, data) {
+    const res = await fetch(`${API_URL}${url}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new ApiError(res.status, body.error);
+    return body;
+  }
+
+  class ApiError extends Error {
+    constructor(status, message) {
+      super(message);
+      this.status = status;
+    }
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
     try {
-      let response;
-      if (isLoginMode) {
-        response = await axios.post(`${API_URL}/auth/login`, { email, password });
-      } else {
-        response = await axios.post(`${API_URL}/auth/register`, { email, password });
-      }
-
-      const { token, user } = response.data;
+      const endpoint = isLoginMode ? '/auth/login' : '/auth/register';
+      const data = await apiPost(endpoint, { email, password });
+      const { token, user } = data;
 
       // Store token and user info
       localStorage.setItem('token', token);
@@ -33,7 +45,7 @@ function Login({ onLogin }) {
       // Notify parent to update auth state
       onLogin(user, token);
     } catch (err) {
-      const errorMsg = err.response?.data?.error || 'An unexpected error occurred';
+      const errorMsg = err instanceof ApiError ? err.message : (err.message || 'An unexpected error occurred');
       setError(errorMsg);
     } finally {
       setLoading(false);
@@ -45,17 +57,13 @@ function Login({ onLogin }) {
       setError('');
       setLoading(true);
       try {
-        // codeResponse.code is a one-time use authorization code
-        const response = await axios.post(`${API_URL}/auth/google`, {
-          code: codeResponse.code
-        });
-
-        const { token, user } = response.data;
+        const body = await apiPost('/auth/google', { code: codeResponse.code });
+        const { token, user } = body;
         localStorage.setItem('token', token);
         localStorage.setItem('user', JSON.stringify(user));
         onLogin(user, token);
       } catch (err) {
-        setError(err.response?.data?.error || 'Google login failed');
+        setError(err instanceof ApiError ? err.message : 'Google login failed');
       } finally {
         setLoading(false);
       }

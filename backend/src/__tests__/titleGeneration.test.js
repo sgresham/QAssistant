@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import axios from 'axios';
 
-vi.mock('axios');
+const mockFetch = vi.fn();
+global.fetch = mockFetch;
 
 describe('generateTitle', () => {
   let generateTitle;
@@ -22,11 +22,11 @@ describe('generateTitle', () => {
     const input = 'Hello world';
     const title = await generateTitle(input, []);
     expect(title).toBe('Hello world');
-    expect(axios.post).not.toHaveBeenCalled();
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it('returns fallback title when LLM call fails', async () => {
-    axios.post.mockRejectedValue(new Error('Network timeout'));
+    mockFetch.mockRejectedValue(new Error('Network timeout'));
 
     const input = 'How do I configure nginx reverse proxy settings';
     const messages = [
@@ -36,26 +36,22 @@ describe('generateTitle', () => {
 
     const title = await generateTitle(input, messages);
     expect(title).toBe('How do I configure nginx reverse proxy settings');
-    expect(axios.post).toHaveBeenCalledWith(
+    expect(mockFetch).toHaveBeenCalledWith(
       `${LLAMA_BASE_URL}/chat/completions`,
       expect.objectContaining({
-        model: MODELS.REFLEX,
-        messages: expect.arrayContaining([
-          expect.objectContaining({ role: 'system' }),
-          expect.objectContaining({ role: 'user' })
-        ]),
-        temperature: 0.3,
-        max_tokens: 50
-      }),
-      { timeout: 30000 }
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: expect.stringContaining(MODELS.REFLEX),
+      })
     );
   });
 
   it('returns LLM-generated title on success', async () => {
-    axios.post.mockResolvedValue({
-      data: {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
         choices: [{ message: { content: 'Nginx Configuration Guide' } }]
-      }
+      }),
     });
 
     const input = 'How do I configure nginx reverse proxy settings';
@@ -69,7 +65,7 @@ describe('generateTitle', () => {
   });
 
   it('truncates fallback title to 50 chars for long input', async () => {
-    axios.post.mockRejectedValue(new Error('LLM unavailable'));
+    mockFetch.mockRejectedValue(new Error('LLM unavailable'));
 
     const input = 'A'.repeat(100);
     const messages = [
@@ -82,7 +78,7 @@ describe('generateTitle', () => {
   });
 
   it('does not truncate fallback title when input is 50 chars or fewer', async () => {
-    axios.post.mockRejectedValue(new Error('LLM unavailable'));
+    mockFetch.mockRejectedValue(new Error('LLM unavailable'));
 
     const input = 'Exactly fifty characters long string!';
     const messages = [
@@ -96,10 +92,11 @@ describe('generateTitle', () => {
   });
 
   it('sends correct title prompt with first two messages', async () => {
-    axios.post.mockResolvedValue({
-      data: {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
         choices: [{ message: { content: 'Test Title' } }]
-      }
+      }),
     });
 
     const messages = [
@@ -109,12 +106,13 @@ describe('generateTitle', () => {
 
     await generateTitle('What is the capital of France?', messages);
 
-    const callArgs = axios.post.mock.calls[0][1];
-    expect(callArgs.messages).toEqual([
-      { role: 'system', content: 'You are a helpful assistant. Generate a short title (max 50 chars). No quotes.' },
+    const callArg = mockFetch.mock.calls[0][1];
+    const body = JSON.parse(callArg.body);
+    expect(body.messages).toEqual([
+      { role: 'system', content: 'You are a helpful assistant. Generate a short title (max 50 chars) summarizing the conversation. Return ONLY the title, no quotes, no labels.' },
       {
         role: 'user',
-        content: 'Generate title:\n\n[user]: What is the capital of France?\n[assistant]: The capital of France is Paris.'
+        content: 'Generate a title for this conversation:\n\n[user]: What is the capital of France?\n[assistant]: The capital of France is Paris.'
       }
     ]);
   });

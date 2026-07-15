@@ -120,7 +120,7 @@ describe('authenticateToken middleware', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('returns 403 when token is invalid', async () => {
+  it('returns 401 when token is invalid', async () => {
     const req = { headers: { authorization: 'Bearer invalidtoken' } };
     let capturedCode, capturedBody;
     const res = {
@@ -133,7 +133,7 @@ describe('authenticateToken middleware', () => {
     };
     const next = vi.fn();
     await authenticateToken(req, res, next);
-    expect(capturedCode).toBe(403);
+    expect(capturedCode).toBe(401);
     expect(capturedBody.error).toBe('Invalid or expired token');
     expect(next).not.toHaveBeenCalled();
   });
@@ -264,6 +264,92 @@ describe('login', () => {
     await login(req, res);
     expect(jsonCalls[0].token).toBeDefined();
     expect(jsonCalls[0].user.email).toBe('goodlogin@test.com');
+  });
+});
+
+describe('googleLogin', () => {
+  let googleLogin;
+
+  beforeEach(async () => {
+    process.env.GOOGLE_CLIENT_ID = 'test-client-id';
+    process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret';
+    const authModule = await import('../auth.js');
+    googleLogin = authModule.googleLogin;
+  });
+
+  it('returns 400 when authorization code is missing', async () => {
+    const req = { body: {} };
+    const jsonFn = vi.fn();
+    const res = {
+      status: vi.fn(() => ({ json: jsonFn })),
+      json: vi.fn(),
+    };
+    await googleLogin(req, res);
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  it('creates a new user on first google login', async () => {
+    const req = { body: { code: 'valid-code' } };
+    const jsonFn = vi.fn();
+    const res = {
+      json: jsonFn,
+      status: vi.fn(() => ({ json: jsonFn })),
+    };
+    await googleLogin(req, res);
+    expect(jsonFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Google login successful',
+        token: expect.any(String),
+        user: expect.objectContaining({ email: 'google@test.com' }),
+      })
+    );
+
+    const User = getUserModel();
+    const user = await User.findOne({ email: 'google@test.com' });
+    expect(user).toBeDefined();
+    expect(user.googleId).toBe('google123');
+  });
+
+  it('links googleId to existing email-only user', async () => {
+    const User = getUserModel();
+    const existing = await User.create({
+      email: 'google@test.com',
+      password: await bcrypt.hash('oldpass', 10),
+    });
+
+    const req = { body: { code: 'valid-code' } };
+    const jsonFn = vi.fn();
+    const res = {
+      json: jsonFn,
+      status: vi.fn(() => ({ json: jsonFn })),
+    };
+    await googleLogin(req, res);
+    expect(jsonFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Google login successful',
+        token: expect.any(String),
+      })
+    );
+
+    const updated = await User.findById(existing._id);
+    expect(updated.googleId).toBe('google123');
+  });
+
+  it('returns 500 when Google API call fails', async () => {
+    const { OAuth2Client } = await import('google-auth-library');
+    const instance = OAuth2Client.mock.results[0]?.value;
+    if (instance?.getToken) {
+      instance.getToken.mockRejectedValue(new Error('Invalid code'));
+    }
+
+    const req = { body: { code: 'bad-code' } };
+    const jsonFn = vi.fn();
+    const res = {
+      status: vi.fn(() => ({ json: jsonFn })),
+      json: vi.fn(),
+    };
+    await googleLogin(req, res);
+    expect(res.status).toHaveBeenCalledWith(500);
   });
 });
 

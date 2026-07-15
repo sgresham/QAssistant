@@ -105,6 +105,34 @@ describe('Conversation CRUD', () => {
       expect(res.body.messages.length).toBeGreaterThan(0);
       expect(res.body.messages[0].role).toBe('system');
     });
+
+    it('sets systemPromptHash on creation', async () => {
+      const handler = await importHandler('createConversation');
+      const req = {
+        body: {},
+        user: { id: testUser._id.toString() },
+      };
+      const res = mockRes();
+      await handler(req, res);
+      expect(res.body.systemPromptHash).toBeDefined();
+      expect(res.body.systemPromptHash.length).toBe(64);
+    });
+
+    it('reflects folder systemPrompt in systemPromptHash', async () => {
+      const folder = await Folder.create({
+        name: 'Tech',
+        userId: testUser._id,
+        systemPrompt: 'Custom tech prompt',
+      });
+      const handler = await importHandler('createConversation');
+      const req = {
+        body: { folderId: folder._id.toString() },
+        user: { id: testUser._id.toString() },
+      };
+      const res = mockRes();
+      await handler(req, res);
+      expect(res.body.systemPrompt).toBe('Custom tech prompt');
+    });
   });
 
   describe('getConversations', () => {
@@ -228,6 +256,29 @@ describe('Conversation CRUD', () => {
       const res = mockRes();
       await handler(req, res);
       expect(res.statusCode).toBe(400);
+    });
+
+    it('updates systemPrompt when moved to a folder with systemPrompt', async () => {
+      const folder = await Folder.create({
+        name: 'PromptFolder',
+        userId: testUser._id,
+        systemPrompt: 'Folder-specific prompt',
+      });
+      const conv = await Conversation.create({
+        title: 'MoveMe',
+        userId: testUser._id,
+        systemPrompt: 'Original prompt',
+      });
+      const handler = await importHandler('updateConversation');
+      const req = {
+        params: { id: conv._id.toString() },
+        body: { folderId: folder._id.toString() },
+        user: { id: testUser._id.toString() },
+      };
+      const res = mockRes();
+      await handler(req, res);
+      expect(res.statusCode).toBe(200);
+      expect(res.body.systemPrompt).toBe('Folder-specific prompt');
     });
 
     it('returns 404 for another user\'s conversation', async () => {

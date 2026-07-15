@@ -1,6 +1,5 @@
 import fs from 'fs';
 import { Conversation, Folder, dbConnected, McpServer, AiProvider } from './db.js';
-import axios from 'axios';
 import { Honcho } from "@honcho-ai/sdk";
 import dotenv from 'dotenv';
 import path from 'path';
@@ -79,19 +78,29 @@ export async function generateTitle(currentInput, incomingMessages, providerConf
       { role: "user", content: `Generate a title for this conversation:\n\n${contextBlock}` }
     ];
 
-    const axiosConfig = { timeout: 30000 };
+    const headers = { 'Content-Type': 'application/json' };
     if (cfg.apiKey) {
-      axiosConfig.headers = { 'Authorization': `Bearer ${cfg.apiKey}` };
+      headers['Authorization'] = `Bearer ${cfg.apiKey}`;
     }
 
-    const titleResponse = await axios.post(`${cfg.baseUrl}/chat/completions`, {
-      model: cfg.model,
-      messages: titlePrompt,
-      temperature: 0.3,
-      max_tokens: 50
-    }, axiosConfig);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-    const title = titleResponse.data.choices[0].message.content;
+    const titleResponse = await fetch(`${cfg.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: cfg.model,
+        messages: titlePrompt,
+        temperature: 0.3,
+        max_tokens: 50
+      }),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    const titleData = await titleResponse.json();
+    const title = titleData.choices[0].message.content;
     return title ? title.trim() : fallbackTitle;
   } catch (e) {
     console.error('Title generation failed, using fallback:', e.message);
@@ -339,32 +348,46 @@ export async function chat(req, res) {
     while (maxToolCalls > 0) {
       maxToolCalls--;
       try {
-        const axiosOptions = { timeout: LLM_TIMEOUT * 1000, responseType: 'stream' };
+        const headers = { 'Content-Type': 'application/json' };
         if (providerConfig.apiKey) {
-          axiosOptions.headers = { 'Authorization': `Bearer ${providerConfig.apiKey}` };
+          headers['Authorization'] = `Bearer ${providerConfig.apiKey}`;
         }
 
-        const response = await axios.post(
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), LLM_TIMEOUT * 1000);
+
+        const response = await fetch(
           `${providerConfig.baseUrl}/chat/completions`,
           {
-            model: modelToUse,
-            messages: currentMessagesForLlm,
-            tools: preparedTools,
-            stream: true,
-            temperature: 0.7
-          },
-          axiosOptions
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              model: modelToUse,
+              messages: currentMessagesForLlm,
+              tools: preparedTools,
+              stream: true,
+              temperature: 0.7
+            }),
+            signal: controller.signal
+          }
         );
+        clearTimeout(timeoutId);
 
-        const stream = response.data;
+        if (!response.ok) {
+          throw new Error(`LLM API responded with status ${response.status}`);
+        }
+
         const decoder = new TextDecoder();
+        const reader = response.body.getReader();
         let accumulatedContent = "";
         let toolCalls = [];
         let isDone = false;
 
-        for await (const chunk of stream) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
           if (isDone) break;
-          const text = decoder.decode(chunk, { stream: true });
+          const text = decoder.decode(value, { stream: true });
           const lines = text.split('\n');
 
           for (const line of lines) {

@@ -1,6 +1,20 @@
-import { afterAll, afterEach } from 'vitest';
+import { afterAll, afterEach, vi } from 'vitest';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import mongoose from 'mongoose';
+
+vi.mock('google-auth-library', () => {
+  const mockGetToken = vi.fn().mockResolvedValue({ tokens: { id_token: 'mock-id-token' } });
+  const mockVerifyIdToken = vi.fn().mockResolvedValue({
+    getPayload: () => ({ email: 'google@test.com', sub: 'google123' }),
+  });
+  return {
+    OAuth2Client: vi.fn(() => ({
+      getToken: mockGetToken,
+      setCredentials: vi.fn(),
+      verifyIdToken: mockVerifyIdToken,
+    })),
+  };
+});
 
 // Top-level await ensures this completes before test files are loaded
 const mongoServer = await MongoMemoryServer.create();

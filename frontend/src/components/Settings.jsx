@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { apiGet, apiPost, apiPut, apiDelete } from '../api';
 
 function Settings({ token, theme, setTheme, sidebarPosition, setSidebarPosition, aiProviders, onAiProvidersChange }) {
   const [mcpServers, setMcpServers] = useState([]);
@@ -31,10 +31,8 @@ function Settings({ token, theme, setTheme, sidebarPosition, setSidebarPosition,
 
   const fetchMcpServers = async () => {
     try {
-      const res = await axios.get('/api/mcp-servers', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setMcpServers(res.data);
+      const data = await apiGet('/api/mcp-servers');
+      setMcpServers(data);
     } catch (err) {
       console.error('Failed to fetch MCP servers:', err);
       setError('Failed to load MCP servers.');
@@ -94,20 +92,16 @@ function Settings({ token, theme, setTheme, sidebarPosition, setSidebarPosition,
       };
 
       if (editingServer) {
-        await axios.put(`/api/mcp-servers/${editingServer._id}`, payload, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        await apiPut(`/api/mcp-servers/${editingServer._id}`, payload);
       } else {
-        await axios.post('/api/mcp-servers', payload, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        await apiPost('/api/mcp-servers', payload);
       }
 
       handleCloseModal();
       fetchMcpServers();
     } catch (err) {
       console.error('Failed to save MCP server:', err);
-      setError(err.response?.data?.error || 'Failed to save MCP server.');
+      setError(err.message || 'Failed to save MCP server.');
     } finally {
       setLoading(false);
     }
@@ -115,9 +109,7 @@ function Settings({ token, theme, setTheme, sidebarPosition, setSidebarPosition,
 
   const handleToggle = async (server) => {
     try {
-      await axios.put(`/api/mcp-servers/${server._id}`, { enabled: !server.enabled }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await apiPut(`/api/mcp-servers/${server._id}`, { enabled: !server.enabled });
       fetchMcpServers();
     } catch (err) {
       console.error('Failed to toggle MCP server:', err);
@@ -129,9 +121,7 @@ function Settings({ token, theme, setTheme, sidebarPosition, setSidebarPosition,
     if (!window.confirm('Are you sure you want to delete this MCP server?')) return;
 
     try {
-      await axios.delete(`/api/mcp-servers/${id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await apiDelete(`/api/mcp-servers/${id}`);
       fetchMcpServers();
     } catch (err) {
       console.error('Failed to delete MCP server:', err);
@@ -192,20 +182,16 @@ function Settings({ token, theme, setTheme, sidebarPosition, setSidebarPosition,
       };
 
       if (editingProvider) {
-        await axios.put(`/api/ai-providers/${editingProvider._id}`, payload, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        await apiPut(`/api/ai-providers/${editingProvider._id}`, payload);
       } else {
-        await axios.post('/api/ai-providers', payload, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        await apiPost('/api/ai-providers', payload);
       }
 
       handleCloseProviderModal();
       if (onAiProvidersChange) onAiProvidersChange();
     } catch (err) {
       console.error('Failed to save AI provider:', err);
-      setProviderError(err.response?.data?.error || 'Failed to save AI provider.');
+      setProviderError(err.message || 'Failed to save AI provider.');
     } finally {
       setProviderLoading(false);
     }
@@ -213,9 +199,7 @@ function Settings({ token, theme, setTheme, sidebarPosition, setSidebarPosition,
 
   const handleToggleProvider = async (provider) => {
     try {
-      await axios.put(`/api/ai-providers/${provider._id}`, { enabled: !provider.enabled }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await apiPut(`/api/ai-providers/${provider._id}`, { enabled: !provider.enabled });
       if (onAiProvidersChange) onAiProvidersChange();
     } catch (err) {
       console.error('Failed to toggle AI provider:', err);
@@ -226,9 +210,7 @@ function Settings({ token, theme, setTheme, sidebarPosition, setSidebarPosition,
   const handleDeleteProvider = async (id) => {
     if (!window.confirm('Are you sure you want to delete this AI provider?')) return;
     try {
-      await axios.delete(`/api/ai-providers/${id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await apiDelete(`/api/ai-providers/${id}`);
       if (onAiProvidersChange) onAiProvidersChange();
     } catch (err) {
       console.error('Failed to delete AI provider:', err);
