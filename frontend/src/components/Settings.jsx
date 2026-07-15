@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { apiGet, apiPost, apiPut, apiDelete } from '../api';
 
-function Settings({ token, theme, setTheme, sidebarPosition, setSidebarPosition, aiProviders, onAiProvidersChange }) {
+function Settings({ theme, setTheme, sidebarPosition, setSidebarPosition, aiProviders, onAiProvidersChange }) {
   const [mcpServers, setMcpServers] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingServer, setEditingServer] = useState(null);

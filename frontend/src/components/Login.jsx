@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useGoogleLogin } from '@react-oauth/google';
-
-const API_URL = `api`;
+import { apiPost, ApiError } from '../api';
 
 function Login({ onLogin }) {
   const [isLoginMode, setIsLoginMode] = useState(true);
@@ -10,39 +9,19 @@ function Login({ onLogin }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  async function apiPost(url, data) {
-    const res = await fetch(`${API_URL}${url}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-    const body = await res.json();
-    if (!res.ok) throw new ApiError(res.status, body.error);
-    return body;
-  }
-
-  class ApiError extends Error {
-    constructor(status, message) {
-      super(message);
-      this.status = status;
-    }
-  }
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
     try {
-      const endpoint = isLoginMode ? '/auth/login' : '/auth/register';
+      const endpoint = isLoginMode ? '/api/auth/login' : '/api/auth/register';
       const data = await apiPost(endpoint, { email, password });
       const { token, user } = data;
 
-      // Store token and user info
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(user));
 
-      // Notify parent to update auth state
       onLogin(user, token);
     } catch (err) {
       const errorMsg = err instanceof ApiError ? err.message : (err.message || 'An unexpected error occurred');
@@ -57,7 +36,7 @@ function Login({ onLogin }) {
       setError('');
       setLoading(true);
       try {
-        const body = await apiPost('/auth/google', { code: codeResponse.code });
+        const body = await apiPost('/api/auth/google', { code: codeResponse.code });
         const { token, user } = body;
         localStorage.setItem('token', token);
         localStorage.setItem('user', JSON.stringify(user));
@@ -69,7 +48,6 @@ function Login({ onLogin }) {
       }
     },
     flow: 'auth-code',
-    // Add the scopes the Taylor Wilsdon MCP server needs
     scope: 'openid email profile https://www.googleapis.com/auth/gmail.readonly',
     onError: () => setError('Google login failed')
   });

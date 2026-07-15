@@ -16,7 +16,8 @@ export async function api(url, options = {}) {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  if (!headers['Content-Type'] && !(options.body instanceof FormData)) {
+  const method = (options.method || 'GET').toUpperCase();
+  if (!headers['Content-Type'] && !(options.body instanceof FormData) && method !== 'GET' && method !== 'HEAD') {
     headers['Content-Type'] = 'application/json';
   }
 

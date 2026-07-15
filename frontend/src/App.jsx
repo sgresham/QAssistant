@@ -352,8 +352,6 @@ function App() {
       />
       {activeView === 'settings' ? (
         <Settings
-          user={user}
-          token={token}
           theme={theme}
           setTheme={setTheme}
           sidebarPosition={sidebarPosition}
