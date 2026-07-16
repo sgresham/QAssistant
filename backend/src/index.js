@@ -34,6 +34,14 @@ import {
   updateAiProvider,
   deleteAiProvider
 } from './aiProviders.js';
+import {
+  getTtsProviders,
+  getTtsProvider,
+  createTtsProvider,
+  updateTtsProvider,
+  deleteTtsProvider
+} from './ttsProviders.js';
+import { speak } from './tts.js';
 
 // 1. Set up __dirname for ES Modules
 const __filename = fileURLToPath(import.meta.url);
@@ -93,6 +101,16 @@ app.get('/api/mcp-servers/:id', authenticateToken, getMcpServer);
 app.post('/api/mcp-servers', authenticateToken, createMcpServer);
 app.put('/api/mcp-servers/:id', authenticateToken, updateMcpServer);
 app.delete('/api/mcp-servers/:id', authenticateToken, deleteMcpServer);
+
+// --- TTS Provider API Endpoints (Protected) ---
+app.get('/api/tts-providers', authenticateToken, getTtsProviders);
+app.get('/api/tts-providers/:id', authenticateToken, getTtsProvider);
+app.post('/api/tts-providers', authenticateToken, createTtsProvider);
+app.put('/api/tts-providers/:id', authenticateToken, updateTtsProvider);
+app.delete('/api/tts-providers/:id', authenticateToken, deleteTtsProvider);
+
+// --- TTS Speak Endpoint (Protected) ---
+app.post('/api/tts/speak', authenticateToken, speak);
 
 // ==========================================
 // MCP INTEGRATION START (Streamable HTTP - Stateful)

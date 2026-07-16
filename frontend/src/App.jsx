@@ -40,6 +40,11 @@ function App() {
   const [activeProviderId, setActiveProviderId] = useState(null);
   const [activeModel, setActiveModel] = useState('');
 
+  // TTS State
+  const [ttsProviders, setTtsProviders] = useState([]);
+  const [activeTtsProviderId, setActiveTtsProviderId] = useState(null);
+  const [autoPlayTts, setAutoPlayTts] = useState(() => localStorage.getItem('autoPlayTts') === 'true');
+
   // View State
   const [activeView, setActiveView] = useState('chat'); // 'chat' or 'settings'
 
@@ -65,6 +70,7 @@ function App() {
       fetchConversations();
       fetchFolders();
       fetchAiProviders();
+      fetchTtsProviders();
     }
   }, [user]);
 
@@ -100,6 +106,19 @@ function App() {
     }
   };
 
+  const fetchTtsProviders = async () => {
+    try {
+      const data = await apiGet(`${API_URL}/tts-providers`);
+      setTtsProviders(data);
+      const enabled = data.filter(p => p.enabled !== false);
+      if (enabled.length > 0 && !activeTtsProviderId) {
+        setActiveTtsProviderId(enabled[0]._id);
+      }
+    } catch (error) {
+      console.error("Failed to fetch TTS providers", error);
+    }
+  };
+
   const handleLogin = (userData, authToken) => {
     setUser(userData);
     setToken(authToken);
@@ -117,6 +136,9 @@ function App() {
     setAiProviders([]);
     setActiveProviderId(null);
     setActiveModel('');
+    setTtsProviders([]);
+    setActiveTtsProviderId(null);
+    setAutoPlayTts(false);
     setActiveView('chat');
   };
 
@@ -309,6 +331,11 @@ function App() {
     }
   };
 
+  const handleAutoPlayTtsChange = (value) => {
+    setAutoPlayTts(value);
+    localStorage.setItem('autoPlayTts', value);
+  };
+
   const handleOpenSettings = () => {
     setActiveView('settings');
   };
@@ -358,6 +385,8 @@ function App() {
           setSidebarPosition={setSidebarPosition}
           aiProviders={aiProviders}
           onAiProvidersChange={fetchAiProviders}
+          ttsProviders={ttsProviders}
+          onTtsProvidersChange={fetchTtsProviders}
         />
       ) : (
         <MainChat
@@ -376,6 +405,10 @@ function App() {
           setActiveProviderId={setActiveProviderId}
           activeModel={activeModel}
           setActiveModel={setActiveModel}
+          ttsProviders={ttsProviders}
+          activeTtsProviderId={activeTtsProviderId}
+          autoPlayTts={autoPlayTts}
+          onAutoPlayTtsChange={handleAutoPlayTtsChange}
         />
       )}
     </div>

@@ -1,4 +1,5 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
+import { FaVolumeUp, FaPause, FaPlay } from 'react-icons/fa';
 import '../App.css';
 import MarkdownRenderer from './MarkdownRenderer';
 
@@ -15,50 +16,160 @@ function MainChat({
   activeProviderId,
   setActiveProviderId,
   activeModel,
-  setActiveModel
+  setActiveModel,
+  ttsProviders,
+  activeTtsProviderId,
+  autoPlayTts,
+  onAutoPlayTtsChange
 }) {
-  const [input, setInput] = React.useState('');
-  const streamingMessageIndex = useRef(null);
+  const [input, setInput] = useState('');
+  const [speakingMsgIndex, setSpeakingMsgIndex] = useState(null);
+  const [isPaused, setIsPaused] = useState(false);
+  const speakingRef = useRef(null);
+  const audioRef = useRef(null);
+  const abortRef = useRef(false);
 
   const textareaRef = useRef(null);
-  // 1. Create a ref for the chat container
   const scrollContainerRef = useRef(null);
+  const prevLoadingRef = useRef(loading);
 
-  // Auto-expand the textarea as the user types
-  React.useEffect(() => {
+  useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
       textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
     }
   }, [input]);
 
-  // 2. Auto-scroll effect
   useEffect(() => {
     if (scrollContainerRef.current) {
-      // Scroll to the bottom immediately
       scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
     }
   }, [chatHistory]);
 
-  const handleSend = async () => {
-    if (!input.trim()) return;
+  useEffect(() => {
+    if (autoPlayTts && prevLoadingRef.current && !loading) {
+      for (let i = chatHistory.length - 1; i >= 0; i--) {
+        if (chatHistory[i].role === 'assistant' && chatHistory[i].content) {
+          handleTtsClick(chatHistory[i].content, i);
+          break;
+        }
+      }
+    }
+    prevLoadingRef.current = loading;
+  }, [loading]);
 
-    // Pass only the message string to the handler in App.jsx
-    // App.jsx will handle adding the message to chatHistory
+  const stopTts = () => {
+    abortRef.current = true;
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = '';
+    }
+    audioRef.current = null;
+    speakingRef.current = null;
+    setSpeakingMsgIndex(null);
+    setIsPaused(false);
+  };
+
+  const resolveTtsProvider = () => {
+    const enabled = ttsProviders.filter(p => p.enabled !== false);
+    if (activeTtsProviderId) {
+      const found = enabled.find(p => p._id === activeTtsProviderId);
+      if (found) return found;
+    }
+    return enabled[0] || null;
+  };
+
+  const startTts = async (text, msgIndex) => {
+    const token = localStorage.getItem('token');
+    const provider = resolveTtsProvider();
+
+    abortRef.current = false;
+    speakingRef.current = msgIndex;
+    setSpeakingMsgIndex(msgIndex);
+    setIsPaused(false);
+
+    try {
+      const response = await fetch('/api/tts/speak', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          text,
+          providerId: provider ? provider._id : null
+        })
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        console.error('TTS error:', err.error || response.status);
+        stopTts();
+        return;
+      }
+
+      const reader = response.body.getReader();
+      const mediaSource = new MediaSource();
+      const audio = new Audio();
+
+      audioRef.current = audio;
+      audio.src = URL.createObjectURL(mediaSource);
+
+      mediaSource.addEventListener('sourceopen', async () => {
+        const sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
+
+        while (!abortRef.current) {
+          if (sourceBuffer.updating) {
+            await new Promise(r => { sourceBuffer.onupdateend = r; });
+          }
+          const { done, value } = await reader.read();
+          if (abortRef.current || done) {
+            if (done && mediaSource.readyState === 'open') {
+              mediaSource.endOfStream();
+            }
+            return;
+          }
+          sourceBuffer.appendBuffer(value);
+        }
+      });
+
+      audio.onpause = () => setIsPaused(true);
+      audio.onplay = () => setIsPaused(false);
+      audio.onended = stopTts;
+      audio.onerror = stopTts;
+
+      await audio.play();
+    } catch (error) {
+      console.error('TTS playback error:', error);
+      stopTts();
+    }
+  };
+
+  const handleTtsClick = (text, index) => {
+    if (speakingRef.current === index && audioRef.current) {
+      if (audioRef.current.paused) {
+        audioRef.current.play();
+      } else {
+        audioRef.current.pause();
+      }
+      return;
+    }
+    if (speakingRef.current !== null) {
+      stopTts();
+    }
+    startTts(text, index);
+  };
+
+  const handleSend = () => {
+    if (!input.trim()) return;
     onSendMessage(input);
     setInput('');
   };
 
-  // Helper for handling Enter key in textarea (Ctrl+Enter to send, Enter to newline)
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
-      // If you want Enter to send by default, remove the shift/ctrl check above
-      // But standard UX for chat inputs is Ctrl+Enter to send.
-      // If you strictly want Enter to send and Shift+Enter for newline:
-      if (!e.ctrlKey && !e.metaKey) {
-        e.preventDefault();
-        handleSend();
-      }
+      e.preventDefault();
+      handleSend();
     }
   };
 
@@ -101,11 +212,20 @@ function MainChat({
           }
           return null;
         })()}
+
+        <label style={{ marginLeft: 'auto' }}>
+          <input
+            type="checkbox"
+            checked={autoPlayTts}
+            onChange={(e) => onAutoPlayTtsChange(e.target.checked)}
+            style={{ marginRight: '4px' }}
+          />
+          Auto-play TTS
+        </label>
       </div>
 
       <div 
         className="chat-box"
-        // 3. Attach the ref to the container
         ref={scrollContainerRef}
       >
         {chatHistory.map((msg, index) => (
@@ -117,6 +237,31 @@ function MainChat({
             )}
             {msg.role === 'system' ? null : (
               <MarkdownRenderer content={msg.content} />
+            )}
+            {msg.role === 'assistant' && msg.content && (
+              <button
+                className="tts-speaker-btn"
+                onClick={() => handleTtsClick(msg.content, index)}
+                title={
+                  speakingMsgIndex === index
+                    ? isPaused ? 'Resume' : 'Pause'
+                    : 'Read aloud'
+                }
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '4px 8px',
+                  marginTop: '8px',
+                  opacity: speakingMsgIndex !== null && speakingMsgIndex !== index ? 0.4 : 0.7,
+                  transition: 'opacity 0.2s'
+                }}
+              >
+                {speakingMsgIndex === index
+                  ? isPaused ? <FaPlay /> : <FaPause />
+                  : <FaVolumeUp />
+                }
+              </button>
             )}
           </div>
         ))}

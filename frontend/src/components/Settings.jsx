@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { apiGet, apiPost, apiPut, apiDelete } from '../api';
 
-function Settings({ theme, setTheme, sidebarPosition, setSidebarPosition, aiProviders, onAiProvidersChange }) {
+function Settings({ theme, setTheme, sidebarPosition, setSidebarPosition, aiProviders, onAiProvidersChange, ttsProviders, onTtsProvidersChange }) {
   const [mcpServers, setMcpServers] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingServer, setEditingServer] = useState(null);
@@ -24,6 +24,17 @@ function Settings({ theme, setTheme, sidebarPosition, setSidebarPosition, aiProv
   });
   const [providerLoading, setProviderLoading] = useState(false);
   const [providerError, setProviderError] = useState('');
+
+  // TTS Provider State
+  const [isTtsModalOpen, setIsTtsModalOpen] = useState(false);
+  const [editingTtsProvider, setEditingTtsProvider] = useState(null);
+  const [ttsFormData, setTtsFormData] = useState({
+    name: '',
+    apiKey: '',
+    defaultVoice: ''
+  });
+  const [ttsLoading, setTtsLoading] = useState(false);
+  const [ttsError, setTtsError] = useState('');
 
   useEffect(() => {
     fetchMcpServers();
@@ -218,6 +229,87 @@ function Settings({ theme, setTheme, sidebarPosition, setSidebarPosition, aiProv
     }
   };
 
+  // TTS Provider Handlers
+  const handleOpenTtsModal = (provider = null) => {
+    if (provider) {
+      setEditingTtsProvider(provider);
+      setTtsFormData({
+        name: provider.name,
+        apiKey: provider.apiKey || '',
+        defaultVoice: provider.defaultVoice || ''
+      });
+    } else {
+      setEditingTtsProvider(null);
+      setTtsFormData({
+        name: '',
+        apiKey: '',
+        defaultVoice: ''
+      });
+    }
+    setIsTtsModalOpen(true);
+    setTtsError('');
+  };
+
+  const handleCloseTtsModal = () => {
+    setIsTtsModalOpen(false);
+    setEditingTtsProvider(null);
+    setTtsError('');
+  };
+
+  const handleTtsChange = (e) => {
+    const { name, value } = e.target;
+    setTtsFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleTtsSubmit = async (e) => {
+    e.preventDefault();
+    setTtsLoading(true);
+    setTtsError('');
+
+    try {
+      const payload = {
+        name: ttsFormData.name,
+        apiKey: ttsFormData.apiKey,
+        defaultVoice: ttsFormData.defaultVoice || undefined
+      };
+
+      if (editingTtsProvider) {
+        await apiPut(`/api/tts-providers/${editingTtsProvider._id}`, payload);
+      } else {
+        await apiPost('/api/tts-providers', payload);
+      }
+
+      handleCloseTtsModal();
+      if (onTtsProvidersChange) onTtsProvidersChange();
+    } catch (err) {
+      console.error('Failed to save TTS provider:', err);
+      setTtsError(err.message || 'Failed to save TTS provider.');
+    } finally {
+      setTtsLoading(false);
+    }
+  };
+
+  const handleToggleTts = async (provider) => {
+    try {
+      await apiPut(`/api/tts-providers/${provider._id}`, { enabled: !provider.enabled });
+      if (onTtsProvidersChange) onTtsProvidersChange();
+    } catch (err) {
+      console.error('Failed to toggle TTS provider:', err);
+      setError('Failed to toggle TTS provider.');
+    }
+  };
+
+  const handleDeleteTts = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this TTS provider?')) return;
+    try {
+      await apiDelete(`/api/tts-providers/${id}`);
+      if (onTtsProvidersChange) onTtsProvidersChange();
+    } catch (err) {
+      console.error('Failed to delete TTS provider:', err);
+      setTtsError('Failed to delete TTS provider.');
+    }
+  };
+
   return (
     <div className="settings-container">
       <div className="settings-group">
@@ -406,6 +498,108 @@ function Settings({ theme, setTheme, sidebarPosition, setSidebarPosition, aiProv
                 </button>
                 <button type="submit" className="btn-primary" disabled={providerLoading}>
                   {providerLoading ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      <hr className="settings-divider" />
+
+      <div className="settings-header">
+        <h2>Text-to-Speech</h2>
+        <button className="btn-primary" onClick={() => handleOpenTtsModal()}>
+          Add TTS Provider
+        </button>
+      </div>
+
+      {ttsError && <div className="error-message">{ttsError}</div>}
+
+      <div className="mcp-servers-list">
+        {ttsProviders.length === 0 ? (
+          <p className="empty-state">No TTS providers configured. Add an ElevenLabs API key to enable text-to-speech.</p>
+        ) : (
+          ttsProviders.map(provider => (
+            <div key={provider._id} className={`mcp-server-card ${provider.enabled === false ? 'mcp-disabled' : ''}`}>
+              <div className="mcp-server-info">
+                <div className="mcp-server-header">
+                  <h3>{provider.name}</h3>
+                  <label className="toggle-switch" title={provider.enabled ? 'Enabled' : 'Disabled'}>
+                    <input
+                      type="checkbox"
+                      checked={provider.enabled !== false}
+                      onChange={() => handleToggleTts(provider)}
+                    />
+                    <span className="toggle-slider"></span>
+                  </label>
+                </div>
+                {provider.apiKey && (
+                  <p className="mcp-headers">API Key: {'*'.repeat(Math.min(20, provider.apiKey.length))}</p>
+                )}
+                <p className="mcp-headers">Default Voice: {provider.defaultVoice || '7p1Ofvcwsv7UBPoFNcpI (Julian)'}</p>
+              </div>
+              <div className="mcp-server-actions">
+                <button className="btn-secondary" onClick={() => handleOpenTtsModal(provider)}>
+                  Edit
+                </button>
+                <button className="btn-danger" onClick={() => handleDeleteTts(provider._id)}>
+                  Delete
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {isTtsModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h3>{editingTtsProvider ? 'Edit TTS Provider' : 'Add TTS Provider'}</h3>
+            <form onSubmit={handleTtsSubmit}>
+              <div className="form-group">
+                <label htmlFor="tts-name">Name</label>
+                <input
+                  type="text"
+                  id="tts-name"
+                  name="name"
+                  value={ttsFormData.name}
+                  onChange={handleTtsChange}
+                  required
+                  placeholder="e.g., ElevenLabs"
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="tts-apiKey">API Key</label>
+                <input
+                  type="password"
+                  id="tts-apiKey"
+                  name="apiKey"
+                  value={ttsFormData.apiKey}
+                  onChange={handleTtsChange}
+                  placeholder="sk-..."
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="tts-voice">Default Voice ID</label>
+                <input
+                  type="text"
+                  id="tts-voice"
+                  name="defaultVoice"
+                  value={ttsFormData.defaultVoice}
+                  onChange={handleTtsChange}
+                  placeholder="7p1Ofvcwsv7UBPoFNcpI (Julian)"
+                />
+                <small style={{ color: '#888', display: 'block', marginTop: '4px' }}>
+                  Find voice IDs at elevenlabs.io/app/voice-library
+                </small>
+              </div>
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={handleCloseTtsModal}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary" disabled={ttsLoading}>
+                  {ttsLoading ? 'Saving...' : 'Save'}
                 </button>
               </div>
             </form>

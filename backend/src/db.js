@@ -91,4 +91,19 @@ const McpServerSchema = new mongoose.Schema({
 
 export const McpServer = mongoose.model('McpServer', McpServerSchema);
 
+// --- TTS Provider Schema ---
+const TtsProviderSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  apiKey: { type: String, default: '' },
+  defaultVoice: { type: String, default: '7p1Ofvcwsv7UBPoFNcpI' },
+  enabled: { type: Boolean, default: true },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+
+TtsProviderSchema.index({ userId: 1, name: 1 }, { unique: true });
+
+export const TtsProvider = mongoose.model('TtsProvider', TtsProviderSchema);
+
 export { dbConnected };
