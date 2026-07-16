@@ -18,6 +18,7 @@ if (fs.existsSync(envPath)) {
 
 const LLAMA_BASE_URL = process.env.LLAMA_ENDPOINT || 'http://10.10.10.30:8888/v1';
 const LLM_TIMEOUT = parseInt(process.env.LLM_TIMEOUT, 10) || 600;
+const MAX_TOOL_CALLS = parseInt(process.env.MAX_TOOL_CALLS, 10) || 10;
 const USER_TIMEZONE = 'Australia/Sydney';
 
 const MODELS = {
@@ -342,7 +343,7 @@ export async function chat(req, res) {
 
     // 6. Tool-Execution Execution Loop
     let finalResponse = "";
-    let maxToolCalls = 5;
+    let maxToolCalls = MAX_TOOL_CALLS;
     let currentMessagesForLlm = [...preparedMessages];
 
     while (maxToolCalls > 0) {
@@ -374,7 +375,16 @@ export async function chat(req, res) {
         clearTimeout(timeoutId);
 
         if (!response.ok) {
-          throw new Error(`LLM API responded with status ${response.status}`);
+          const errorBody = await response.text().catch(() => '');
+          console.error('LLM API Error Response Body:', errorBody);
+          console.error('LLM Request Payload:', JSON.stringify({
+            model: modelToUse,
+            messages: currentMessagesForLlm,
+            tools: preparedTools,
+            stream: true,
+            temperature: 0.7
+          }, null, 2));
+          throw new Error(`LLM API responded with status ${response.status}: ${errorBody.slice(0, 500)}`);
         }
 
         const decoder = new TextDecoder();

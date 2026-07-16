@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import '../App.css'; 
-import { FaCog } from 'react-icons/fa';
+import { FaCog, FaChevronLeft, FaChevronRight, FaFolder, FaPencilAlt, FaTrash, FaTimes, FaPlus } from 'react-icons/fa';
 
 function Sidebar({ 
   conversations, 
@@ -72,17 +72,17 @@ function Sidebar({
     <div className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
       <div className="sidebar-header">
         <button onClick={() => onNewChat(null)} className="new-chat-btn">
-          {isCollapsed ? '+' : '+ New Chat'}
+          {isCollapsed ? <FaPlus /> : <><FaPlus /> New Chat</>}
         </button>
         <button onClick={onToggleCollapse} className="toggle-sidebar-btn">
-          {isCollapsed ? '>>' : '<<'}
+          {isCollapsed ? <FaChevronRight /> : <FaChevronLeft />}
         </button>
       </div>
 
       {!isCollapsed && (
         <>
           <div className="folder-controls">
-            <button onClick={onAddFolder} className="add-folder-btn">+ Folder</button>
+            <button onClick={onAddFolder} className="add-folder-btn"><FaPlus /> Folder</button>
             {isAddingFolder && (
               <div className="add-folder-form">
                 <input
@@ -115,8 +115,8 @@ function Sidebar({
               onDrop={(e) => handleDrop(e, null)}
             >
               <div className="folder-header">
-                <span className="folder-name">📂 Ungrouped</span>
-                <button onClick={() => handleNewChatInFolder(null)} className="new-in-folder-btn">+ New</button>
+                <span className="folder-name"><FaFolder /> Ungrouped</span>
+                <button onClick={() => handleNewChatInFolder(null)} className="new-in-folder-btn"><FaPlus /> New</button>
               </div>
               <div className="conv-list">
                 {ungroupedConversations.map((conv) => (
@@ -144,11 +144,11 @@ function Sidebar({
                 onDrop={(e) => handleDrop(e, folder._id)}
               >
                 <div className="folder-header">
-                  <span className={`folder-name${folder.systemPrompt ? ' has-prompt' : ''}`}>📂 {folder.name}</span>
+                  <span className={`folder-name${folder.systemPrompt ? ' has-prompt' : ''}`}><FaFolder /> {folder.name}</span>
                   <div className="folder-actions">
-                    <button onClick={() => handleNewChatInFolder(folder._id)} className="new-in-folder-btn">+ New</button>
-                    <button onClick={() => onStartEditingFolderPrompt(folder)} className="edit-folder-btn" title="Edit system prompt">⚙️</button>
-                    <button onClick={() => onDeleteFolder(folder._id)} className="delete-folder-btn">🗑</button>
+                    <button onClick={() => handleNewChatInFolder(folder._id)} className="new-in-folder-btn"><FaPlus /> New</button>
+                    <button onClick={() => onStartEditingFolderPrompt(folder)} className="edit-folder-btn" title="Edit system prompt"><FaCog /></button>
+                    <button onClick={() => onDeleteFolder(folder._id)} className="delete-folder-btn"><FaTrash /></button>
                   </div>
                 </div>
                 {editingFolderId === folder._id && (
@@ -260,7 +260,6 @@ function ConversationItem({
         )}
       </div>
       <div className="conv-actions">
-        {/* NEW: Edit Button */}
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -269,10 +268,9 @@ function ConversationItem({
           className="edit-chat-btn"
           title="Rename Conversation"
         >
-          ✏️
+          <FaPencilAlt />
         </button>
         
-        {/* Existing: Delete Button */}
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -281,7 +279,7 @@ function ConversationItem({
           className="delete-chat-btn"
           title="Delete Conversation"
         >
-          ×
+          <FaTimes />
         </button>
       </div>
     </div>

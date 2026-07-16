@@ -4,8 +4,14 @@ import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
+function stripHtml(str) {
+  return str.replace(/<[^>]*>/g, '');
+}
+
 function MarkdownRenderer({ content }) {
   if (!content) return null;
+
+  const sanitized = stripHtml(content);
 
   return (
     <div className="markdown-content">
@@ -89,7 +95,7 @@ function MarkdownRenderer({ content }) {
           },
         }}
       >
-        {content}
+        {sanitized}
       </ReactMarkdown>
     </div>
   );

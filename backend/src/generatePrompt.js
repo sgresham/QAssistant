@@ -35,10 +35,26 @@ export function buildLlmPayload({
       return {
         role: plainMessage.role,
         content: plainMessage.content || " ", // Fallback space prevents tokenization drops
-        ...(plainMessage.tool_calls && { tool_calls: plainMessage.tool_calls }),
-        ...(plainMessage.tool_call_id && { tool_call_id: plainMessage.tool_call_id })
+        ...(plainMessage.role === 'assistant' && plainMessage.tool_calls && { tool_calls: plainMessage.tool_calls }),
+        ...(plainMessage.role === 'tool' && plainMessage.tool_call_id && { tool_call_id: plainMessage.tool_call_id })
       };
-    });
+    })
+    // Sanitize: remove tool messages missing tool_call_id (corrupted by schema stripping)
+    .filter(m => !(m.role === 'tool' && !m.tool_call_id));
+
+  // Strip tool_calls from assistant messages whose tool results were removed
+  const validToolCallIds = new Set(
+    processedHistory.filter(m => m.role === 'tool').map(m => m.tool_call_id)
+  );
+  processedHistory = processedHistory.map(m => {
+    if (m.role === 'assistant' && m.tool_calls) {
+      const allResultsExist = m.tool_calls.every(tc => validToolCallIds.has(tc.id));
+      if (!allResultsExist) {
+        return { role: 'assistant', content: m.content };
+      }
+    }
+    return m;
+  });
 
   // 5. Append Temporal Context ONLY to the absolute final user turn at the very end
   const lastUserIndex = processedHistory.findLastIndex(m => m.role === 'user');

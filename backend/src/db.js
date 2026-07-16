@@ -47,7 +47,9 @@ const ConversationSchema = new mongoose.Schema({
   title: { type: String, default: 'New Conversation' },
   messages: [{
     role: { type: String, required: true },
-    content: { type: String, required: true }
+    content: { type: String, default: '' },
+    tool_calls: { type: [mongoose.Schema.Types.Mixed], default: undefined },
+    tool_call_id: { type: String, default: undefined }
   }],
   folderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Folder', default: null },
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
