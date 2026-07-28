@@ -20,5 +20,7 @@
     "concurrently": "^9.2.1",
     "wait-on": "^9.0.4"
   },
-  "dependencies": {}
+  "dependencies": {
+    "@elevenlabs/elevenlabs-js": "^2.58.0"
+  }
 }

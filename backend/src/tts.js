@@ -52,7 +52,7 @@ export async function speak(req, res) {
 
     const client = new ElevenLabsClient({ apiKey: config.apiKey });
 
-    const audioStream = await client.textToSpeech.convert(voiceId, {
+    const audioStream = await client.textToSpeech.stream(voiceId, {
       text: text,
       modelId: 'eleven_v3',
       outputFormat: 'mp3_44100_128'
